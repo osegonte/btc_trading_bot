@@ -1,0 +1,13 @@
+{
+  "current_attempt": {
+    "start_time": "2025-06-14T21:33:14.704675",
+    "start_balance": 20.0,
+    "current_balance": 19.991133927761297,
+    "trades": [],
+    "peak_balance": 20.0549045653779,
+    "max_drawdown": 0.17038649315478338,
+    "attempt_number": 1
+  },
+  "attempts": [],
+  "last_updated": "2025-06-14T22:04:42.042562"
+}
