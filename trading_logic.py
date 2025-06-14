@@ -1,703 +1,606 @@
 #!/usr/bin/env python3
 """
-Enhanced Trading Logic for BTC/USD with Position Management Integration
-Includes: Advanced indicators, ML integration, risk management
+BTC Scalping Trading Logic - FULLY CORRECTED VERSION
+Purpose: Implement €20 to €1M scalping strategy using real-time tick data
+FIXES: 1) Lowered momentum and volatility thresholds 2) FIXED position size calculation
 """
 
 import logging
 import numpy as np
 from datetime import datetime, timedelta
-from typing import Dict, Optional, List
+from typing import Dict, Optional
 from enum import Enum
+from collections import deque
 
 
-class SignalStrength(Enum):
-    WEAK = "weak"
-    MODERATE = "moderate"
-    STRONG = "strong"
-    VERY_STRONG = "very_strong"
+class SignalType(Enum):
+    BUY = "buy"
+    SELL = "sell"
+    HOLD = "hold"
+    CLOSE = "close"
 
 
-class TradingSignal:
-    """Enhanced trading signal with detailed information"""
-    def __init__(self, signal_type: str, confidence: float, reasoning: str, 
-                 strength: SignalStrength = SignalStrength.MODERATE, indicators: Dict = None):
-        self.signal_type = signal_type  # 'buy', 'sell', 'hold', 'close'
-        self.confidence = confidence    # 0.0 to 1.0
+class ScalpingSignal:
+    """Scalping signal for BTC trading"""
+    def __init__(self, signal_type: SignalType, confidence: float, reasoning: str, 
+                 entry_price: float = 0.0, target_price: float = 0.0, stop_price: float = 0.0):
+        self.signal_type = signal_type
+        self.confidence = confidence  # 0.0 to 1.0
         self.reasoning = reasoning
-        self.strength = strength
-        self.indicators = indicators or {}
+        self.entry_price = entry_price
+        self.target_price = target_price
+        self.stop_price = stop_price
         self.timestamp = datetime.now()
 
 
-class PositionState:
-    """Position state management"""
+class PositionManager:
+    """Manage current trading position for scalping"""
     def __init__(self):
         self.side = None           # 'long', 'short', None
         self.entry_price = None
         self.entry_time = None
         self.quantity = 0.0
-        self.unrealized_pnl = 0.0
-        self.max_profit = 0.0
-        self.max_loss = 0.0
+        self.target_price = None
+        self.stop_price = None
+        self.current_balance = 20.0  # Start with €20
 
 
-class EnhancedBTCTradingLogic:
-    """Enhanced trading logic for BTC/USD with integrated position management"""
+class BTCScalpingLogic:
+    """
+    Core BTC scalping logic for €20 to €1M challenge
+    FULLY CORRECTED VERSION - Lower thresholds + Fixed position sizing
+    """
     
     def __init__(self, config: Dict = None):
-        # Configuration
+        # €20 to €1M Challenge Configuration
         config = config or {}
-        self.profit_target_ticks = config.get('profit_target_ticks', 10)
-        self.stop_loss_ticks = config.get('stop_loss_ticks', 5)
-        self.tick_size = config.get('tick_size', 1.0)
-        self.min_confidence = config.get('min_confidence', 0.75)
-        self.max_position_time = config.get('max_position_time', 30)
+        self.profit_target_euros = config.get('profit_target_euros', 8.0)    # €8 target
+        self.stop_loss_euros = config.get('stop_loss_euros', 4.0)           # €4 stop
+        self.min_confidence = config.get('min_confidence', 0.50)            # Lowered from 0.65
+        self.max_position_time = config.get('max_position_time', 20)        # 20 second scalps
+        self.risk_per_trade_pct = config.get('risk_per_trade_pct', 2.0)     # 2% risk per trade
         
         # Position management
-        self.position = PositionState()
+        self.position = PositionManager()
+        
+        # Scalping metrics tracking
         self.trades_today = 0
         self.consecutive_losses = 0
         self.last_trade_time = None
-        self.min_trade_interval = config.get('min_trade_interval', 3.0)
+        self.min_trade_interval = 3.0  # Minimum 3 seconds between trades
         
-        # Enhanced technical analysis
-        self.price_history = []
-        self.volume_history = []
-        self.indicator_history = []
-        self.rsi_period = 14
-        self.bollinger_period = 20
-        self.ema_periods = [5, 10, 20]
+        # Technical analysis for scalping
+        self.price_buffer = deque(maxlen=30)  # Last 30 ticks for fast analysis
+        self.volume_buffer = deque(maxlen=30)
         
-        # Performance tracking
-        self.total_signals = 0
-        self.successful_signals = 0
-        self.signal_performance = {'buy': [], 'sell': []}
-        
-        # Risk management
+        # Performance tracking for €20 to €1M
+        self.session_start_balance = 20.0
+        self.current_balance = 20.0
+        self.total_trades = 0
+        self.winning_trades = 0
         self.daily_pnl = 0.0
-        self.max_daily_loss = config.get('max_daily_loss', 500.0)
-        self.position_size_multiplier = 1.0
         
-        logging.info(f"✅ Enhanced BTC trading logic initialized")
-        logging.info(f"   Target: {self.profit_target_ticks} ticks | Stop: {self.stop_loss_ticks} ticks")
+        # Scalping state management
+        self.last_signal_time = None
+        self.signal_cooldown = 1.0  # 1 second between signals
+        
+        logging.info(f"✅ BTC Scalping Logic initialized - €20 to €1M Challenge (FULLY CORRECTED)")
+        logging.info(f"   Target: €{self.profit_target_euros} | Stop: €{self.stop_loss_euros}")
     
     def can_trade(self) -> tuple[bool, str]:
-        """Check if trading is allowed based on various conditions"""
+        """Check if trading is allowed based on scalping rules"""
         
-        # Check if we already have a position
+        # Check if already in position
         if self.position.side:
-            return False, f"Already have {self.position.side} position"
+            return False, f"Already in {self.position.side} position"
         
-        # Check minimum time between trades
+        # Check minimum time between trades (prevent overtrading)
         if self.last_trade_time:
             time_since_last = (datetime.now() - self.last_trade_time).total_seconds()
             if time_since_last < self.min_trade_interval:
                 return False, f"Too soon since last trade ({time_since_last:.1f}s)"
         
-        # Check daily loss limit
-        if self.daily_pnl <= -self.max_daily_loss:
-            return False, f"Daily loss limit reached: ${self.daily_pnl:.2f}"
+        # Check signal cooldown
+        if self.last_signal_time:
+            cooldown_time = (datetime.now() - self.last_signal_time).total_seconds()
+            if cooldown_time < self.signal_cooldown:
+                return False, "Signal cooldown active"
         
-        # Check consecutive losses
-        if self.consecutive_losses >= 5:
+        # Check consecutive losses (risk management)
+        if self.consecutive_losses >= 3:
             return False, f"Too many consecutive losses: {self.consecutive_losses}"
+        
+        # Check if we have enough balance to trade
+        min_trade_size = 5.0  # Minimum €5 to make meaningful scalp
+        if self.current_balance < min_trade_size:
+            return False, f"Insufficient balance: €{self.current_balance:.2f}"
         
         return True, "OK"
     
-    def evaluate_tick(self, tick_data: Dict, market_analysis: Dict, ml_signal=None) -> TradingSignal:
-        """Main evaluation method with enhanced logic"""
+    def evaluate_tick(self, tick_data: Dict, market_metrics: Dict) -> ScalpingSignal:
+        """
+        Main evaluation method - analyze tick for scalping opportunities
+        CORRECTED VERSION with proper position sizing
+        """
         
-        # Update internal state
-        self._update_internal_state(tick_data, market_analysis)
+        # Update internal buffers
+        self._update_buffers(tick_data)
         
         # Check exit conditions first if in position
         if self.position.side:
-            exit_signal = self._check_exit_conditions(tick_data, market_analysis)
-            if exit_signal.signal_type == 'close':
-                return exit_signal
+            return self._check_exit_conditions(tick_data)
         
         # Check entry conditions if no position
-        if not self.position.side:
-            can_trade, reason = self.can_trade()
-            if not can_trade:
-                return TradingSignal('hold', 0.0, reason)
-            
-            return self._check_entry_conditions(tick_data, market_analysis, ml_signal)
+        can_trade, reason = self.can_trade()
+        if not can_trade:
+            return ScalpingSignal(SignalType.HOLD, 0.0, reason)
         
-        return TradingSignal('hold', 0.0, 'No action needed')
+        # Analyze for scalping entry
+        return self._analyze_scalping_entry(tick_data, market_metrics)
     
-    def _update_internal_state(self, tick_data: Dict, market_analysis: Dict):
-        """Update internal state with new data"""
-        current_price = tick_data.get('price', 0)
-        current_volume = tick_data.get('size', 0)
-        
-        # Update price and volume history
-        self.price_history.append(current_price)
-        self.volume_history.append(current_volume)
-        
-        # Keep only recent history
-        if len(self.price_history) > 100:
-            self.price_history.pop(0)
-        if len(self.volume_history) > 100:
-            self.volume_history.pop(0)
-        
-        # Update position P&L if in position
-        if self.position.side:
-            self._update_position_pnl(current_price)
+    def _update_buffers(self, tick_data: Dict):
+        """Update price and volume buffers for analysis"""
+        self.price_buffer.append(tick_data['price'])
+        self.volume_buffer.append(tick_data['size'])
     
-    def _update_position_pnl(self, current_price: float):
-        """Update position P&L and tracking"""
-        if not self.position.side or not self.position.entry_price:
-            return
+    def _calculate_position_size(self, current_price: float) -> float:
+        """
+        CORRECTED: Calculate appropriate position size for €20 scalping account
+        """
         
-        if self.position.side == 'long':
-            pnl = (current_price - self.position.entry_price) * self.position.quantity
-        else:  # short
-            pnl = (self.position.entry_price - current_price) * self.position.quantity
-        
-        self.position.unrealized_pnl = pnl
-        
-        # Track max profit/loss for trailing stops
-        if pnl > self.position.max_profit:
-            self.position.max_profit = pnl
-        if pnl < self.position.max_loss:
-            self.position.max_loss = pnl
+        # Dynamic position sizing based on account balance
+        if self.current_balance <= 30:
+            # Very small account - use tiny fixed positions
+            return 0.0002  # ~€8.60 at €43,000/BTC
+        elif self.current_balance <= 50:
+            return 0.0003  # ~€12.90
+        elif self.current_balance <= 100:
+            return 0.0005  # ~€21.50
+        elif self.current_balance <= 200:
+            return 0.001   # ~€43.00
+        elif self.current_balance <= 500:
+            return 0.002   # ~€86.00
+        else:
+            # Larger accounts - calculate dynamically
+            risk_amount = self.current_balance * (self.risk_per_trade_pct / 100)
+            max_position_value = risk_amount * 10  # 10:1 ratio for scalping
+            position_size = max_position_value / current_price
+            return min(position_size, 0.01)  # Cap at 0.01 BTC
     
-    def _check_entry_conditions(self, tick_data: Dict, market_analysis: Dict, ml_signal=None) -> TradingSignal:
-        """Enhanced entry condition checking"""
+    def _analyze_scalping_entry(self, tick_data: Dict, market_metrics: Dict) -> ScalpingSignal:
+        """Analyze tick data for scalping entry opportunities - CORRECTED position sizing"""
         
-        current_price = tick_data.get('price', 0)
-        spread = tick_data.get('spread', 0)
+        if len(self.price_buffer) < 10:
+            return ScalpingSignal(SignalType.HOLD, 0.0, "Insufficient data for analysis")
         
-        # Basic filters
-        if spread > 2.0:  # Wider spread tolerance for BTC
-            return TradingSignal('hold', 0.0, 'Spread too wide for BTC')
+        current_price = tick_data['price']
         
-        if market_analysis.get('price_volatility', 0) > 0.5:
-            return TradingSignal('hold', 0.0, 'Extreme volatility')
+        # Get market metrics for scalping
+        momentum_fast = market_metrics.get('momentum_fast', 0)
+        momentum_medium = market_metrics.get('momentum_medium', 0)
+        volume_spike = market_metrics.get('volume_spike', False)
+        price_volatility = market_metrics.get('price_volatility', 0)
         
-        # Calculate technical indicators
-        indicators = self._calculate_technical_indicators()
+        # Calculate additional scalping indicators
+        indicators = self._calculate_scalping_indicators()
         
-        # Enhanced scoring system
-        bullish_score, bearish_score = self._calculate_signal_scores(market_analysis, indicators)
-        
-        # ML integration
-        ml_boost = 0
-        if ml_signal and ml_signal.confidence > 0.75:
-            if ml_signal.signal == 'buy':
-                bullish_score += 3
-                ml_boost = ml_signal.confidence
-            elif ml_signal.signal == 'sell':
-                bearish_score += 3
-                ml_boost = ml_signal.confidence
-        
-        # Determine signal
-        signal_type = 'hold'
+        # SCALPING SIGNAL LOGIC - CORRECTED THRESHOLDS
+        signal_type = SignalType.HOLD
         confidence = 0.0
         reasoning = ""
-        strength = SignalStrength.WEAK
         
-        max_score = 20  # Maximum possible score
-        
-        if bullish_score >= 12 and bullish_score > bearish_score + 3:
-            confidence = min(0.95, 0.6 + (bullish_score / max_score) + (ml_boost * 0.2))
-            signal_type = 'buy'
-            strength = self._get_signal_strength(bullish_score, max_score)
-            reasoning = f"Bullish: {bullish_score}/{max_score} | RSI: {indicators.get('rsi', 0):.1f}"
-            
-        elif bearish_score >= 12 and bearish_score > bullish_score + 3:
-            confidence = min(0.95, 0.6 + (bearish_score / max_score) + (ml_boost * 0.2))
-            signal_type = 'sell'
-            strength = self._get_signal_strength(bearish_score, max_score)
-            reasoning = f"Bearish: {bearish_score}/{max_score} | RSI: {indicators.get('rsi', 0):.1f}"
-        else:
-            max_combined = max(bullish_score, bearish_score)
-            confidence = max_combined / max_score
-            reasoning = f"Mixed signals: Bull {bullish_score}, Bear {bearish_score}"
-        
-        # Apply confidence filter
-        if confidence < self.min_confidence:
-            return TradingSignal('hold', confidence, f"Confidence too low: {confidence:.2f}")
-        
-        return TradingSignal(signal_type, confidence, reasoning, strength, indicators)
-    
-    def _calculate_signal_scores(self, market_analysis: Dict, indicators: Dict) -> tuple[int, int]:
-        """Calculate bullish and bearish scores based on multiple factors"""
-        
+        # Bullish scalping conditions
         bullish_score = 0
         bearish_score = 0
         
-        # Price momentum analysis
-        momentum = market_analysis.get('momentum', 0)
-        momentum_long = market_analysis.get('momentum_long', 0)
-        
-        if momentum > 0.003:  # Strong upward momentum
-            bullish_score += 4
-        elif momentum > 0.001:  # Moderate upward momentum
-            bullish_score += 2
-        elif momentum < -0.003:  # Strong downward momentum
-            bearish_score += 4
-        elif momentum < -0.001:  # Moderate downward momentum
-            bearish_score += 2
-        
-        # Long-term momentum
-        if momentum_long > 0.005:
-            bullish_score += 2
-        elif momentum_long < -0.005:
-            bearish_score += 2
-        
-        # Price changes
-        price_change_5 = market_analysis.get('price_change_5', 0)
-        price_change_10 = market_analysis.get('price_change_10', 0)
-        
-        if price_change_5 > 0.15:  # 0.15% in 5 ticks
+        # CORRECTED: Lower momentum thresholds for more signals
+        if momentum_fast > 0.0005:  # LOWERED from 0.002
             bullish_score += 3
-        elif price_change_5 > 0.05:
+        elif momentum_fast > 0.0002:  # LOWERED from 0.001
             bullish_score += 1
-        elif price_change_5 < -0.15:
+        elif momentum_fast < -0.0005:  # LOWERED from -0.002
             bearish_score += 3
-        elif price_change_5 < -0.05:
+        elif momentum_fast < -0.0002:  # LOWERED from -0.001
             bearish_score += 1
         
-        # RSI analysis
-        rsi = indicators.get('rsi', 50)
-        if 30 < rsi < 70:  # Good trading range
-            if rsi > 50:
-                bullish_score += 1
-            else:
-                bearish_score += 1
-        elif rsi < 30:  # Oversold - potential reversal
-            bullish_score += 3
-        elif rsi > 70:  # Overbought - potential reversal
-            bearish_score += 3
-        
-        # Bollinger Bands
-        bb_position = indicators.get('bb_position', 0.5)
-        if bb_position < 0.2:  # Near lower band
+        # Medium-term momentum confirmation
+        if momentum_medium > 0.0003:  # LOWERED from 0.001
             bullish_score += 2
-        elif bb_position > 0.8:  # Near upper band
-            bearish_score += 2
-        elif 0.3 < bb_position < 0.7:  # Middle range
-            bullish_score += 1
-            bearish_score += 1
-        
-        # Moving averages
-        if market_analysis.get('price_above_sma5', False):
-            bullish_score += 1
-        else:
-            bearish_score += 1
-            
-        if market_analysis.get('sma5_above_sma10', False):
-            bullish_score += 2
-        else:
+        elif momentum_medium < -0.0003:  # LOWERED from -0.001
             bearish_score += 2
         
-        # Volume analysis
-        volume_trend = market_analysis.get('volume_trend', 0)
-        volume_ratio = market_analysis.get('volume_ratio', 1)
-        
-        if volume_trend > 0.2 and volume_ratio > 1.5:  # Increasing volume
-            if momentum > 0:
+        # Volume confirmation (crucial for scalping)
+        if volume_spike:
+            if momentum_fast > 0:
                 bullish_score += 2
-            else:
+            elif momentum_fast < 0:
                 bearish_score += 2
         
-        # EMA analysis
-        ema_signals = indicators.get('ema_signals', {})
-        if ema_signals.get('bullish_crossover', False):
+        # RSI for scalping (faster periods)
+        rsi = indicators.get('rsi_fast', 50)
+        if 30 < rsi < 45:  # Oversold but not extreme
+            bullish_score += 2
+        elif 55 < rsi < 70:  # Overbought but not extreme
+            bearish_score += 2
+        elif rsi < 25:  # Very oversold (reversal opportunity)
             bullish_score += 3
-        if ema_signals.get('bearish_crossover', False):
+        elif rsi > 75:  # Very overbought (reversal opportunity)
             bearish_score += 3
         
-        return bullish_score, bearish_score
-    
-    def _get_signal_strength(self, score: int, max_score: int) -> SignalStrength:
-        """Determine signal strength based on score"""
-        ratio = score / max_score
-        if ratio >= 0.85:
-            return SignalStrength.VERY_STRONG
-        elif ratio >= 0.70:
-            return SignalStrength.STRONG
-        elif ratio >= 0.55:
-            return SignalStrength.MODERATE
-        else:
-            return SignalStrength.WEAK
-    
-    def _check_exit_conditions(self, tick_data: Dict, market_analysis: Dict) -> TradingSignal:
-        """Enhanced exit condition checking"""
+        # Price action patterns
+        if indicators.get('bullish_breakout', False):
+            bullish_score += 3
+        if indicators.get('bearish_breakdown', False):
+            bearish_score += 3
         
-        if not self.position.side or not self.position.entry_price:
-            return TradingSignal('hold', 0.0, 'No position')
+        # CORRECTED: Much lower volatility requirements
+        if price_volatility < 0.0001:  # LOWERED from 0.001
+            return ScalpingSignal(SignalType.HOLD, 0.0, "Market too quiet for scalping")
+        elif price_volatility > 0.02:  # INCREASED from 0.01 (allow more volatile conditions)
+            return ScalpingSignal(SignalType.HOLD, 0.0, "Excessive volatility - too risky")
         
-        current_price = tick_data.get('price', 0)
-        current_time = datetime.now()
-        
-        # Calculate P&L in ticks
-        if self.position.side == 'long':
-            pnl_ticks = (current_price - self.position.entry_price) / self.tick_size
-        else:  # short
-            pnl_ticks = (self.position.entry_price - current_price) / self.tick_size
-        
-        # Time-based exit
-        if self.position.entry_time:
-            time_in_position = (current_time - self.position.entry_time).total_seconds()
-            if time_in_position > self.max_position_time:
-                return TradingSignal('close', 1.0, f'Time exit: {time_in_position:.0f}s')
-        
-        # Profit target
-        if pnl_ticks >= self.profit_target_ticks:
-            return TradingSignal('close', 1.0, f'Profit target: +{pnl_ticks:.1f} ticks')
-        
-        # Stop loss
-        if pnl_ticks <= -self.stop_loss_ticks:
-            return TradingSignal('close', 1.0, f'Stop loss: {pnl_ticks:.1f} ticks')
-        
-        # Dynamic exits based on indicators
-        indicators = self._calculate_technical_indicators()
-        
-        # RSI extremes
-        rsi = indicators.get('rsi', 50)
-        if self.position.side == 'long' and rsi > 80:
-            return TradingSignal('close', 0.8, f'RSI overbought exit: {rsi:.1f}')
-        elif self.position.side == 'short' and rsi < 20:
-            return TradingSignal('close', 0.8, f'RSI oversold exit: {rsi:.1f}')
-        
-        # Momentum reversal
-        momentum = market_analysis.get('momentum', 0)
-        if self.position.side == 'long' and momentum < -0.004:
-            return TradingSignal('close', 0.7, f'Momentum reversal: {momentum:.4f}')
-        elif self.position.side == 'short' and momentum > 0.004:
-            return TradingSignal('close', 0.7, f'Momentum reversal: {momentum:.4f}')
-        
-        # Trailing stop based on max profit
-        if self.position.max_profit > self.profit_target_ticks * self.tick_size * 0.5:
-            current_from_peak = self.position.max_profit - self.position.unrealized_pnl
-            trailing_threshold = self.position.max_profit * 0.3  # 30% from peak
+        # CORRECTED: Lower scoring requirements for more signals
+        if bullish_score >= 2 and bullish_score > bearish_score:  # LOWERED from 5 and 2
+            signal_type = SignalType.BUY
+            confidence = min(0.95, 0.4 + (bullish_score / 8))  # ADJUSTED confidence calculation
+            reasoning = f"Bullish scalp: Score {bullish_score}, Fast momentum {momentum_fast:.6f}"
             
-            if current_from_peak > trailing_threshold:
-                return TradingSignal('close', 0.9, f'Trailing stop: {current_from_peak:.2f} from peak')
+        elif bearish_score >= 2 and bearish_score > bullish_score:  # LOWERED from 5 and 2
+            signal_type = SignalType.SELL
+            confidence = min(0.95, 0.4 + (bearish_score / 8))  # ADJUSTED confidence calculation
+            reasoning = f"Bearish scalp: Score {bearish_score}, Fast momentum {momentum_fast:.6f}"
         
-        return TradingSignal('hold', 0.0, f'Hold: {pnl_ticks:+.1f} ticks')
+        else:
+            max_score = max(bullish_score, bearish_score)
+            confidence = max_score / 8  # ADJUSTED from 10
+            reasoning = f"Mixed signals: Bull {bullish_score}, Bear {bearish_score}"
+        
+        # Apply confidence filter for scalping
+        if confidence < self.min_confidence:
+            return ScalpingSignal(SignalType.HOLD, confidence, f"Low confidence: {confidence:.2f}")
+        
+        # CORRECTED: Calculate proper position size and targets
+        if signal_type in [SignalType.BUY, SignalType.SELL]:
+            entry_price = current_price
+            
+            # CORRECTED: Use new position size calculation
+            position_size = self._calculate_position_size(current_price)
+            
+            # Calculate targets based on position size
+            if signal_type == SignalType.BUY:
+                target_price = entry_price + (self.profit_target_euros / position_size)
+                stop_price = entry_price - (self.stop_loss_euros / position_size)
+            else:  # SELL
+                target_price = entry_price - (self.profit_target_euros / position_size)
+                stop_price = entry_price + (self.stop_loss_euros / position_size)
+            
+            self.last_signal_time = datetime.now()
+            
+            return ScalpingSignal(
+                signal_type, confidence, reasoning, 
+                entry_price, target_price, stop_price
+            )
+        
+        return ScalpingSignal(SignalType.HOLD, confidence, reasoning)
     
-    def _calculate_technical_indicators(self) -> Dict:
-        """Calculate comprehensive technical indicators"""
-        if len(self.price_history) < 20:
+    def _calculate_scalping_indicators(self) -> Dict:
+        """Calculate fast indicators for scalping decisions"""
+        if len(self.price_buffer) < 10:
             return {}
         
-        prices = np.array(self.price_history)
+        prices = np.array(list(self.price_buffer))
+        volumes = np.array(list(self.volume_buffer))
+        
         indicators = {}
         
-        # RSI
-        indicators['rsi'] = self._calculate_rsi(prices)
+        # Fast RSI (10 periods for scalping)
+        if len(prices) >= 11:
+            deltas = np.diff(prices[-11:])
+            gains = np.where(deltas > 0, deltas, 0)
+            losses = np.where(deltas < 0, -deltas, 0)
+            
+            avg_gain = np.mean(gains) if len(gains) > 0 else 0
+            avg_loss = np.mean(losses) if len(losses) > 0 else 0.001
+            
+            if avg_loss == 0:
+                indicators['rsi_fast'] = 100 if avg_gain > 0 else 50
+            else:
+                rs = avg_gain / avg_loss
+                indicators['rsi_fast'] = 100 - (100 / (1 + rs))
+        else:
+            indicators['rsi_fast'] = 50
         
-        # Bollinger Bands
-        bb_data = self._calculate_bollinger_bands(prices)
-        indicators.update(bb_data)
+        # Price breakout detection - CORRECTED with lower thresholds
+        if len(prices) >= 10:
+            recent_high = np.max(prices[-10:-1])  # Exclude current price
+            recent_low = np.min(prices[-10:-1])
+            current_price = prices[-1]
+            
+            indicators['bullish_breakout'] = current_price > recent_high * 1.0005  # LOWERED from 1.001
+            indicators['bearish_breakdown'] = current_price < recent_low * 0.9995  # LOWERED from 0.999
         
-        # EMAs
-        ema_data = self._calculate_emas(prices)
-        indicators.update(ema_data)
+        # Volume surge detection
+        if len(volumes) >= 5:
+            recent_volume = volumes[-1]
+            avg_volume = np.mean(volumes[-5:-1])
+            indicators['volume_surge'] = recent_volume > avg_volume * 1.5  # LOWERED from 2.0
         
-        # MACD
-        macd_data = self._calculate_macd(prices)
-        indicators.update(macd_data)
-        
-        # Support/Resistance
-        sr_data = self._calculate_support_resistance(prices)
-        indicators.update(sr_data)
+        # Micro trend detection (last 5 ticks)
+        if len(prices) >= 5:
+            micro_trend = np.polyfit(range(5), prices[-5:], 1)[0]  # Slope of last 5 prices
+            indicators['micro_trend'] = micro_trend
+            indicators['micro_trend_bullish'] = micro_trend > 1.0  # LOWERED from 2.0
+            indicators['micro_trend_bearish'] = micro_trend < -1.0  # LOWERED from -2.0
         
         return indicators
     
-    def _calculate_rsi(self, prices: np.ndarray, period: int = 14) -> float:
-        """Calculate RSI"""
-        if len(prices) < period + 1:
-            return 50.0
+    def _check_exit_conditions(self, tick_data: Dict) -> ScalpingSignal:
+        """Check exit conditions for current scalping position"""
         
-        deltas = np.diff(prices[-period-1:])
-        gains = np.where(deltas > 0, deltas, 0)
-        losses = np.where(deltas < 0, -deltas, 0)
+        if not self.position.side:
+            return ScalpingSignal(SignalType.HOLD, 0.0, "No position to exit")
         
-        avg_gain = np.mean(gains)
-        avg_loss = np.mean(losses)
+        current_price = tick_data['price']
+        current_time = datetime.now()
         
-        if avg_loss == 0:
-            return 100.0
+        # Calculate current P&L
+        if self.position.side == 'long':
+            pnl_ticks = current_price - self.position.entry_price
+        else:  # short
+            pnl_ticks = self.position.entry_price - current_price
         
-        rs = avg_gain / avg_loss
-        rsi = 100 - (100 / (1 + rs))
-        return rsi
-    
-    def _calculate_bollinger_bands(self, prices: np.ndarray, period: int = 20) -> Dict:
-        """Calculate Bollinger Bands"""
-        if len(prices) < period:
-            current_price = prices[-1]
-            return {
-                'bb_upper': current_price * 1.02,
-                'bb_middle': current_price,
-                'bb_lower': current_price * 0.98,
-                'bb_position': 0.5,
-                'bb_width': 0.04
-            }
+        # Convert to euros (approximate)
+        position_size = self.position.quantity
+        pnl_euros = pnl_ticks * position_size
         
-        sma = np.mean(prices[-period:])
-        std = np.std(prices[-period:])
+        # Time-based exit (crucial for scalping)
+        time_in_position = (current_time - self.position.entry_time).total_seconds()
+        if time_in_position > self.max_position_time:
+            return ScalpingSignal(
+                SignalType.CLOSE, 1.0, 
+                f"Time exit: {time_in_position:.0f}s (max {self.max_position_time}s)"
+            )
         
-        upper = sma + (2 * std)
-        lower = sma - (2 * std)
+        # Profit target hit
+        if pnl_euros >= self.profit_target_euros:
+            return ScalpingSignal(
+                SignalType.CLOSE, 1.0, 
+                f"Profit target hit: +€{pnl_euros:.2f}"
+            )
         
-        current_price = prices[-1]
-        bb_position = (current_price - lower) / (upper - lower) if upper != lower else 0.5
-        bb_width = (upper - lower) / sma if sma > 0 else 0
+        # Stop loss hit
+        if pnl_euros <= -self.stop_loss_euros:
+            return ScalpingSignal(
+                SignalType.CLOSE, 1.0, 
+                f"Stop loss hit: -€{abs(pnl_euros):.2f}"
+            )
         
-        return {
-            'bb_upper': upper,
-            'bb_middle': sma,
-            'bb_lower': lower,
-            'bb_position': bb_position,
-            'bb_width': bb_width
-        }
-    
-    def _calculate_emas(self, prices: np.ndarray) -> Dict:
-        """Calculate EMAs and crossover signals"""
-        ema_data = {}
-        
-        for period in self.ema_periods:
-            if len(prices) >= period:
-                alpha = 2 / (period + 1)
-                ema = prices[-period]  # Start with SMA
-                for price in prices[-period+1:]:
-                    ema = alpha * price + (1 - alpha) * ema
-                ema_data[f'ema_{period}'] = ema
-        
-        # Crossover signals
-        if 'ema_5' in ema_data and 'ema_10' in ema_data:
-            # Check if we have previous values for crossover detection
-            if len(self.indicator_history) > 0:
-                prev_indicators = self.indicator_history[-1]
-                prev_ema5 = prev_indicators.get('ema_5', ema_data['ema_5'])
-                prev_ema10 = prev_indicators.get('ema_10', ema_data['ema_10'])
+        # Quick profit protection (take 60% of target if momentum weakens)
+        if pnl_euros >= self.profit_target_euros * 0.6:
+            if len(self.price_buffer) >= 3:
+                recent_momentum = (self.price_buffer[-1] - self.price_buffer[-3]) / self.price_buffer[-3]
                 
-                # Detect crossovers
-                bullish_cross = (prev_ema5 <= prev_ema10 and ema_data['ema_5'] > ema_data['ema_10'])
-                bearish_cross = (prev_ema5 >= prev_ema10 and ema_data['ema_5'] < ema_data['ema_10'])
-                
-                ema_data['ema_signals'] = {
-                    'bullish_crossover': bullish_cross,
-                    'bearish_crossover': bearish_cross
-                }
+                if self.position.side == 'long' and recent_momentum < 0.0002:  # LOWERED threshold
+                    return ScalpingSignal(
+                        SignalType.CLOSE, 0.8, 
+                        f"Momentum weakening: +€{pnl_euros:.2f}"
+                    )
+                elif self.position.side == 'short' and recent_momentum > -0.0002:  # LOWERED threshold
+                    return ScalpingSignal(
+                        SignalType.CLOSE, 0.8, 
+                        f"Momentum weakening: +€{pnl_euros:.2f}"
+                    )
         
-        return ema_data
+        # Hold position
+        return ScalpingSignal(
+            SignalType.HOLD, 0.0, 
+            f"Holding: {pnl_euros:+.2f}€ ({time_in_position:.0f}s)"
+        )
     
-    def _calculate_macd(self, prices: np.ndarray) -> Dict:
-        """Calculate MACD"""
-        if len(prices) < 26:
-            return {}
-        
-        # Calculate EMAs for MACD
-        ema_12 = self._ema(prices, 12)
-        ema_26 = self._ema(prices, 26)
-        
-        macd_line = ema_12 - ema_26
-        signal_line = self._ema(np.array([macd_line]), 9)  # Simplified
-        histogram = macd_line - signal_line
-        
-        return {
-            'macd': macd_line,
-            'macd_signal': signal_line,
-            'macd_histogram': histogram
-        }
-    
-    def _ema(self, prices: np.ndarray, period: int) -> float:
-        """Calculate single EMA value"""
-        if len(prices) < period:
-            return np.mean(prices)
-        
-        alpha = 2 / (period + 1)
-        ema = prices[-period]
-        for price in prices[-period+1:]:
-            ema = alpha * price + (1 - alpha) * ema
-        return ema
-    
-    def _calculate_support_resistance(self, prices: np.ndarray) -> Dict:
-        """Calculate support and resistance levels"""
-        if len(prices) < 20:
-            return {}
-        
-        recent_high = np.max(prices[-20:])
-        recent_low = np.min(prices[-20:])
-        current_price = prices[-1]
-        
-        # Distance to support/resistance
-        support_distance = (current_price - recent_low) / recent_low if recent_low > 0 else 1
-        resistance_distance = (recent_high - current_price) / recent_high if recent_high > 0 else 1
-        
-        return {
-            'resistance_level': recent_high,
-            'support_level': recent_low,
-            'near_support': support_distance < 0.005,
-            'near_resistance': resistance_distance < 0.005,
-            'support_strength': 1 / (support_distance + 0.001),
-            'resistance_strength': 1 / (resistance_distance + 0.001)
-        }
-    
-    def update_position(self, action: str, price: float, quantity: float = 0.001, timestamp: str = None):
-        """Update position state"""
+    def update_position(self, action: str, price: float, quantity: float, timestamp: str = None):
+        """Update position state for scalping"""
         
         if action in ['buy', 'sell']:
+            # Open new position
             self.position.side = 'long' if action == 'buy' else 'short'
             self.position.entry_price = price
             self.position.entry_time = datetime.fromisoformat(timestamp) if timestamp else datetime.now()
             self.position.quantity = quantity
-            self.position.unrealized_pnl = 0.0
-            self.position.max_profit = 0.0
-            self.position.max_loss = 0.0
+            
+            # Calculate targets
+            if action == 'buy':
+                self.position.target_price = price + (self.profit_target_euros / quantity)
+                self.position.stop_price = price - (self.stop_loss_euros / quantity)
+            else:
+                self.position.target_price = price - (self.profit_target_euros / quantity)
+                self.position.stop_price = price + (self.stop_loss_euros / quantity)
             
             self.last_trade_time = datetime.now()
             
-            logging.info(f"Position opened: {self.position.side.upper()} {quantity} BTC @ ${price:,.2f}")
+            logging.info(f"Scalping position opened: {self.position.side.upper()} @ €{price:.2f}")
             
         elif action == 'close':
+            # Close position and update performance
             if self.position.side and self.position.entry_price:
                 # Calculate final P&L
                 if self.position.side == 'long':
-                    pnl_ticks = (price - self.position.entry_price) / self.tick_size
+                    pnl_per_unit = price - self.position.entry_price
                 else:
-                    pnl_ticks = (self.position.entry_price - price) / self.tick_size
+                    pnl_per_unit = self.position.entry_price - price
                 
-                pnl_usd = pnl_ticks * self.tick_size
+                total_pnl = pnl_per_unit * self.position.quantity
                 
-                # Update performance tracking
-                self.total_signals += 1
-                if pnl_usd > 0:
-                    self.successful_signals += 1
+                # Update balance and tracking
+                self.current_balance += total_pnl
+                self.daily_pnl += total_pnl
+                self.total_trades += 1
+                
+                if total_pnl > 0:
+                    self.winning_trades += 1
                     self.consecutive_losses = 0
-                    self.signal_performance[self.position.side].append(pnl_usd)
                 else:
                     self.consecutive_losses += 1
                 
-                self.daily_pnl += pnl_usd
-                
-                # Adjust position size based on performance
-                self._adjust_position_size_multiplier(pnl_usd)
-                
-                logging.info(f"Position closed: {pnl_ticks:+.1f} ticks (${pnl_usd:+.2f})")
+                logging.info(f"Scalping position closed: {total_pnl:+.2f}€ | Balance: €{self.current_balance:.2f}")
             
             # Reset position
-            self.position = PositionState()
+            self.position = PositionManager()
+            self.position.current_balance = self.current_balance
             self.last_trade_time = datetime.now()
     
-    def _adjust_position_size_multiplier(self, pnl: float):
-        """Adjust position size based on recent performance"""
-        if pnl > 0:
-            self.position_size_multiplier = min(1.5, self.position_size_multiplier * 1.05)
-        else:
-            self.position_size_multiplier = max(0.5, self.position_size_multiplier * 0.95)
-    
     def get_position_info(self) -> Dict:
-        """Get comprehensive position information"""
+        """Get current position information for monitoring"""
+        if not self.position.side:
+            return {
+                'has_position': False,
+                'balance': self.current_balance,
+                'trades_today': self.trades_today,
+                'consecutive_losses': self.consecutive_losses
+            }
+        
+        time_in_position = (datetime.now() - self.position.entry_time).total_seconds()
+        
         return {
-            'has_position': bool(self.position.side),
-            'side': self.position.side or 'none',
-            'entry_price': self.position.entry_price or 0.0,
+            'has_position': True,
+            'side': self.position.side,
+            'entry_price': self.position.entry_price,
             'quantity': self.position.quantity,
-            'unrealized_pnl': self.position.unrealized_pnl,
-            'max_profit': self.position.max_profit,
-            'max_loss': self.position.max_loss,
-            'time_in_position': (datetime.now() - self.position.entry_time).total_seconds() if self.position.entry_time else 0,
-            'entry_time': self.position.entry_time.isoformat() if self.position.entry_time else None
-        }
-    
-    def get_performance_stats(self) -> Dict:
-        """Get comprehensive performance statistics"""
-        win_rate = (self.successful_signals / max(1, self.total_signals)) * 100
-        
-        # Calculate average wins/losses
-        all_wins = []
-        all_losses = []
-        for side_results in self.signal_performance.values():
-            for result in side_results:
-                if result > 0:
-                    all_wins.append(result)
-                else:
-                    all_losses.append(result)
-        
-        avg_win = np.mean(all_wins) if all_wins else 0
-        avg_loss = np.mean(all_losses) if all_losses else 0
-        profit_factor = abs(sum(all_wins) / sum(all_losses)) if all_losses else float('inf')
-        
-        return {
-            'total_signals': self.total_signals,
-            'successful_signals': self.successful_signals,
-            'win_rate': win_rate,
-            'consecutive_losses': self.consecutive_losses,
-            'daily_pnl': self.daily_pnl,
-            'position_size_multiplier': self.position_size_multiplier,
-            'avg_win': avg_win,
-            'avg_loss': avg_loss,
-            'profit_factor': profit_factor,
+            'target_price': self.position.target_price,
+            'stop_price': self.position.stop_price,
+            'time_in_position': time_in_position,
+            'entry_time': self.position.entry_time.isoformat(),
+            'balance': self.current_balance,
             'trades_today': self.trades_today
         }
     
-    def get_technical_indicators(self) -> Dict:
-        """Get current technical indicators"""
-        return self._calculate_technical_indicators()
+    def get_scalping_performance(self) -> Dict:
+        """Get performance metrics for €20 to €1M challenge"""
+        
+        win_rate = (self.winning_trades / max(1, self.total_trades)) * 100
+        balance_growth = ((self.current_balance - self.session_start_balance) / self.session_start_balance) * 100
+        
+        # Calculate level in €20 to €1M challenge
+        current_level = 0
+        level_target = 20.0
+        while level_target <= self.current_balance and level_target < 1000000:
+            current_level += 1
+            level_target *= 2  # Double each level
+        
+        next_target = level_target if level_target <= 1000000 else 1000000
+        progress_to_next = (self.current_balance / next_target) * 100
+        
+        return {
+            'current_balance': self.current_balance,
+            'starting_balance': self.session_start_balance,
+            'balance_growth_pct': balance_growth,
+            'total_trades': self.total_trades,
+            'winning_trades': self.winning_trades,
+            'losing_trades': self.total_trades - self.winning_trades,
+            'win_rate': win_rate,
+            'daily_pnl': self.daily_pnl,
+            'consecutive_losses': self.consecutive_losses,
+            
+            # €20 to €1M Challenge specific
+            'challenge_level': current_level,
+            'next_target': next_target,
+            'progress_to_next_pct': progress_to_next,
+            'distance_to_million': 1000000 - self.current_balance,
+            
+            # Risk metrics
+            'risk_per_trade_euros': self.current_balance * (self.risk_per_trade_pct / 100),
+            'max_daily_loss': self.current_balance * 0.1,  # 10% daily loss limit
+        }
     
-    def reset_daily_stats(self):
-        """Reset daily statistics"""
+    def reset_to_twenty_euros(self):
+        """Reset balance to €20 for new challenge attempt"""
+        
+        logging.info(f"🔄 Resetting €20 to €1M challenge")
+        logging.info(f"   Previous balance: €{self.current_balance:.2f}")
+        logging.info(f"   Trades completed: {self.total_trades}")
+        logging.info(f"   Win rate: {(self.winning_trades / max(1, self.total_trades)) * 100:.1f}%")
+        
+        # Reset all counters
+        self.current_balance = 20.0
+        self.session_start_balance = 20.0
+        self.total_trades = 0
+        self.winning_trades = 0
         self.daily_pnl = 0.0
-        self.trades_today = 0
         self.consecutive_losses = 0
-        logging.info("📊 Daily trading stats reset")
+        self.trades_today = 0
+        
+        # Reset position
+        self.position = PositionManager()
+        self.position.current_balance = 20.0
+        
+        logging.info("✅ Challenge reset complete - starting fresh with €20")
+    
+    def should_reset_challenge(self) -> bool:
+        """Check if challenge should be reset (balance too low)"""
+        return self.current_balance < 5.0  # Reset if below €5
+    
+    def get_risk_metrics(self) -> Dict:
+        """Get current risk metrics for monitoring"""
+        
+        # Calculate maximum position size based on current balance
+        max_risk_per_trade = self.current_balance * (self.risk_per_trade_pct / 100)
+        max_position_size = self._calculate_position_size(43000)  # Approximate
+        
+        # Daily loss limit (10% of current balance)
+        daily_loss_limit = self.current_balance * 0.1
+        daily_risk_utilization = (abs(self.daily_pnl) / daily_loss_limit) * 100 if self.daily_pnl < 0 else 0
+        
+        return {
+            'current_balance': self.current_balance,
+            'risk_per_trade_euros': max_risk_per_trade,
+            'max_position_size': max_position_size,
+            'daily_loss_limit': daily_loss_limit,
+            'daily_pnl': self.daily_pnl,
+            'daily_risk_utilization_pct': daily_risk_utilization,
+            'consecutive_losses': self.consecutive_losses,
+            'should_reset': self.should_reset_challenge(),
+            'trades_until_rest': max(0, 10 - (self.trades_today % 10)),  # Rest every 10 trades
+        }
 
 
 if __name__ == "__main__":
-    # Test enhanced trading logic
+    # Test BTC scalping logic
     config = {
-        'profit_target_ticks': 10,
-        'stop_loss_ticks': 5,
-        'min_confidence': 0.75
+        'profit_target_euros': 8.0,
+        'stop_loss_euros': 4.0,
+        'min_confidence': 0.50,  # CORRECTED
+        'max_position_time': 20
     }
     
-    logic = EnhancedBTCTradingLogic(config)
+    logic = BTCScalpingLogic(config)
     
-    # Sample data
+    # Sample tick data
     tick_data = {
         'price': 43250.50,
-        'spread': 1.0,
-        'size': 0.5,
+        'size': 1.5,
         'timestamp': datetime.now()
     }
     
-    market_analysis = {
-        'momentum': 0.004,
-        'price_volatility': 0.15,
-        'price_change_5': 0.12,
-        'price_change_10': 0.25,
-        'volume_trend': 0.2,
-        'price_above_sma5': True,
-        'sma5_above_sma10': True
+    # Sample market metrics with lower values (realistic)
+    market_metrics = {
+        'momentum_fast': 0.0008,  # Realistic low momentum
+        'momentum_medium': 0.0005,
+        'volume_spike': True,
+        'price_volatility': 0.0003  # Low but acceptable volatility
     }
     
-    print("🧪 Testing Enhanced BTC Trading Logic...")
-    
-    # Add price history
-    for i in range(30):
-        logic.price_history.append(43000 + i * 5 + np.random.normal(0, 10))
+    print("🧪 Testing FULLY CORRECTED BTC Scalping Logic...")
     
     # Test signal generation
-    signal = logic.evaluate_tick(tick_data, market_analysis)
-    print(f"Signal: {signal.signal_type} | Confidence: {signal.confidence:.2f}")
-    print(f"Strength: {signal.strength.value} | Reasoning: {signal.reasoning}")
+    signal = logic.evaluate_tick(tick_data, market_metrics)
+    print(f"Signal: {signal.signal_type.value} | Confidence: {signal.confidence:.2f}")
+    print(f"Reasoning: {signal.reasoning}")
     
-    # Test technical indicators
-    indicators = logic.get_technical_indicators()
-    print(f"\n📊 Technical Indicators:")
-    for key, value in indicators.items():
-        if isinstance(value, (int, float)):
-            print(f"   {key}: {value:.2f}")
-        else:
-            print(f"   {key}: {value}")
+    # Test position size calculation
+    position_size = logic._calculate_position_size(43250.50)
+    print(f"Position size for €20 account: {position_size:.6f} BTC (€{position_size * 43250.50:.2f})")
     
-    print("✅ Enhanced Trading Logic test completed")
+    # Test performance metrics
+    performance = logic.get_scalping_performance()
+    print(f"\n📊 Performance: {performance}")
+    
+    print("✅ FULLY CORRECTED BTC Scalping Logic test completed")

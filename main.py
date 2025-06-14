@@ -1,121 +1,84 @@
 #!/usr/bin/env python3
 """
-Consolidated BTC Trading Bot - Main Entry Point
-6-File Architecture: main.py, data_collection.py, trading_logic.py, trade_execution.py, logger.py, ml_interface.py
+Complete BTC Scalping Bot for €20 to €1M Challenge
+4-File Core Structure: data_collection.py, trading_logic.py, trade_execution.py, logger.py
 """
 
 import asyncio
 import logging
 import time
-import json
 from datetime import datetime
-from typing import Dict, Optional
+from typing import Dict
 
-# Configuration - Easy to modify
+# Import the 4 core modules
+from data_collection import BTCDataCollector
+from trading_logic import BTCScalpingLogic, SignalType
+from trade_execution import BTCTradeExecutor
+from logger import BTCTradeLogger
+
+# Configuration for €20 to €1M Challenge
 CONFIG = {
-    # Trading Configuration
-    'symbol': 'BTCUSD',
-    'quantity': 0.001,  # 0.001 BTC position size
-    'profit_target_ticks': 10,  # $10 profit target
-    'stop_loss_ticks': 5,       # $5 stop loss
-    'tick_size': 1.0,           # $1 per tick
-    'min_confidence': 0.75,     # Minimum signal confidence
-    'max_position_time': 30,    # Max 30 seconds in position
+    # Challenge Parameters
+    'starting_balance': 20.0,              # Start with €20
+    'profit_target_euros': 8.0,            # €8 profit target
+    'stop_loss_euros': 4.0,                # €4 stop loss (2:1 ratio)
+    'max_position_time': 20,               # 20-second scalps
+    'min_confidence': 0.65,                # Lower threshold for more opportunities
+    'risk_per_trade_pct': 2.0,             # Risk 2% per trade
     
-    # API Configuration (Replace with your keys)
-    'paper_trading': True,                          # Set to False for live trading
-    'api_key': 'YOUR_ALPACA_API_KEY',              # Replace with your API key
-    'secret_key': 'YOUR_ALPACA_SECRET_KEY',        # Replace with your secret key
+    # API Configuration
+    'paper_trading': True,
+    'api_key': 'YOUR_ALPACA_API_KEY',      # Replace with your keys
+    'secret_key': 'YOUR_ALPACA_SECRET_KEY', # Replace with your keys
+    
+    # Scalping Settings
+    'max_daily_trades': 100,               # High frequency for scalping
+    'min_trade_interval': 2.0,             # 2 seconds between trades
+    'status_update_interval': 10,          # Status every 10 seconds
     
     # Risk Management
-    'max_daily_trades': 20,      # Conservative daily limit
-    'daily_loss_limit': 500.0,   # Stop trading at $500 daily loss
-    'max_position_size': 0.01,   # Maximum position size
-    'min_trade_interval': 3.0,   # Minimum 3 seconds between trades
+    'max_consecutive_losses': 3,           # Reset after 3 losses
+    'daily_loss_limit_pct': 10.0,         # 10% daily loss limit
+    'force_reset_balance': 5.0,            # Reset if below €5
     
-    # Bot Settings
-    'log_file': 'btcusd_trades.csv',
-    'status_update_interval': 10,  # Status updates every 10 seconds
-    'weekend_mode': True,          # Enable weekend simulation
-    'enable_ml': True,             # Enable ML features
-    
-    # Performance Monitoring
-    'enable_win_rate_monitoring': True,
-    'win_rate_alert_threshold': 30.0,    # Alert if win rate drops below 30%
-    'export_metrics_interval': 300,      # Export metrics every 5 minutes
+    # Files
+    'log_file': 'btc_scalping_challenge.csv',
 }
 
-# Import core modules
-from data_collection import EnhancedBTCDataCollector
-from trading_logic import EnhancedBTCTradingLogic
-from trade_execution import EnhancedBTCTradeExecutor
-from logger import SimpleBTCTradeLogger
 
-# Import ML interface
-try:
-    from ml_interface import BTCMLInterface, BTC_ML_CONFIG
-    ML_AVAILABLE = True
-except ImportError:
-    ML_AVAILABLE = False
-    logging.warning("⚠️ ML interface not available")
-
-
-class ConsolidatedBTCBot:
-    """Consolidated BTC Trading Bot with all features integrated"""
+class BTCScalpingBot:
+    """
+    Complete BTC Scalping Bot for €20 to €1M Challenge
+    Integrates all 4 core modules for automated scalping
+    """
     
     def __init__(self):
-        # Validate configuration
-        self._validate_config()
-        
         # Bot state
         self.is_running = False
         self.session_start = datetime.now()
+        self.current_balance = CONFIG['starting_balance']
         self.trades_today = 0
-        self.daily_pnl = 0.0
         self.consecutive_losses = 0
-        self.circuit_breaker_active = False
+        self.challenge_attempt = 1
         
         # Performance tracking
-        self.performance_metrics = {
-            'total_trades': 0,
-            'winning_trades': 0,
-            'losing_trades': 0,
-            'win_rate': 0.0,
-            'total_pnl': 0.0,
-            'avg_pnl': 0.0,
-            'max_drawdown': 0.0,
-            'peak_pnl': 0.0
-        }
+        self.total_trades = 0
+        self.winning_trades = 0
+        self.daily_pnl = 0.0
         
-        # Initialize components
+        # Initialize core components
         self.setup_logging()
         self.initialize_components()
         
-        print(f"\n₿ Consolidated BTC Trading Bot Initialized")
-        self.display_config()
-    
-    def _validate_config(self):
-        """Validate configuration settings"""
-        issues = []
-        
-        if CONFIG['api_key'] == 'YOUR_ALPACA_API_KEY':
-            issues.append("⚠️ API key not configured - will use simulation mode")
-        
-        if CONFIG['quantity'] > 0.01:
-            issues.append("⚠️ Position size might be large for testing")
-        
-        if CONFIG['min_confidence'] < 0.70:
-            issues.append("⚠️ Confidence threshold might be too low")
-        
-        if issues:
-            print("⚠️ Configuration Notes:")
-            for issue in issues:
-                print(f"   {issue}")
-            print()
+        print(f"\n₿ BTC SCALPING BOT INITIALIZED")
+        print(f"🎯 Challenge: €20 → €1,000,000")
+        print(f"💰 Starting Balance: €{self.current_balance}")
+        print(f"📊 Strategy: €{CONFIG['profit_target_euros']} target, €{CONFIG['stop_loss_euros']} stop")
+        print(f"⏱️ Max Position Time: {CONFIG['max_position_time']} seconds")
     
     def setup_logging(self):
-        """Setup logging system"""
-        log_filename = f'btc_bot_{datetime.now().strftime("%Y%m%d")}.log'
+        """Setup logging for the bot"""
+        log_filename = f'btc_scalping_{datetime.now().strftime("%Y%m%d")}.log'
         
         logging.basicConfig(
             level=logging.INFO,
@@ -126,104 +89,48 @@ class ConsolidatedBTCBot:
             ]
         )
         
-        if not CONFIG['paper_trading'] and CONFIG['api_key'] != 'YOUR_ALPACA_API_KEY':
-            logging.warning("🔴 LIVE TRADING MODE - REAL MONEY AT RISK!")
+        logging.info("🚀 BTC Scalping Bot starting...")
     
     def initialize_components(self):
-        """Initialize all trading components"""
+        """Initialize all 4 core components"""
         
-        print("🔧 Initializing BTC trading components...")
+        print("🔧 Initializing core components...")
         
-        # 1. Enhanced Data Collector
-        data_config = {
-            'simulation': {
-                'base_price': 43000.0,
-                'volatility_multiplier': 2.0,
-                'tick_frequency': 0.1,
-                'price_variation': 50.0
-            },
-            'force_simulation': CONFIG['weekend_mode'] and self._is_weekend()
-        }
-        self.data_collector = EnhancedBTCDataCollector(CONFIG['symbol'], data_config)
+        # 1. Data Collection
+        self.data_collector = BTCDataCollector("BTCUSD")
         
-        # 2. Enhanced Trading Logic
+        # 2. Trading Logic
         logic_config = {
-            'profit_target_ticks': CONFIG['profit_target_ticks'],
-            'stop_loss_ticks': CONFIG['stop_loss_ticks'],
-            'tick_size': CONFIG['tick_size'],
+            'profit_target_euros': CONFIG['profit_target_euros'],
+            'stop_loss_euros': CONFIG['stop_loss_euros'],
             'min_confidence': CONFIG['min_confidence'],
             'max_position_time': CONFIG['max_position_time'],
-            'min_trade_interval': CONFIG['min_trade_interval'],
-            'max_daily_loss': CONFIG['daily_loss_limit']
+            'risk_per_trade_pct': CONFIG['risk_per_trade_pct']
         }
-        self.trading_logic = EnhancedBTCTradingLogic(logic_config)
+        self.trading_logic = BTCScalpingLogic(logic_config)
+        self.trading_logic.current_balance = self.current_balance
         
-        # 3. Enhanced Trade Executor
+        # 3. Trade Execution
         execution_config = {
             'paper_trading': CONFIG['paper_trading'],
             'api_key': CONFIG['api_key'] if CONFIG['api_key'] != 'YOUR_ALPACA_API_KEY' else '',
-            'secret_key': CONFIG['secret_key'] if CONFIG['secret_key'] != 'YOUR_ALPACA_SECRET_KEY' else '',
-            'daily_loss_limit': CONFIG['daily_loss_limit'],
-            'max_position_size': CONFIG['max_position_size']
+            'secret_key': CONFIG['secret_key'] if CONFIG['secret_key'] != 'YOUR_ALPACA_SECRET_KEY' else ''
         }
-        self.trade_executor = EnhancedBTCTradeExecutor(execution_config)
+        self.trade_executor = BTCTradeExecutor(execution_config)
         
         # 4. Trade Logger
-        self.trade_logger = SimpleBTCTradeLogger(CONFIG['log_file'])
+        self.trade_logger = BTCTradeLogger(CONFIG['log_file'])
         
-        # 5. ML Interface (optional)
-        if CONFIG['enable_ml'] and ML_AVAILABLE:
-            ml_config = BTC_ML_CONFIG.copy()
-            ml_config['model_file'] = CONFIG['log_file'].replace('.csv', '_ml_model.pkl')
-            self.ml_interface = BTCMLInterface(ml_config)
-            print("🤖 ML interface enabled")
-        else:
-            self.ml_interface = None
-            if CONFIG['enable_ml']:
-                print("⚠️ ML requested but not available")
-        
-        # Setup data callback
+        # Connect data collector to trading logic
         self.data_collector.add_tick_callback(self.on_tick_received)
         
-        print("✅ All components initialized successfully")
+        print("✅ All core components initialized")
     
-    def _is_weekend(self) -> bool:
-        """Check if it's weekend"""
-        return datetime.now().weekday() >= 5
-    
-    def display_config(self):
-        """Display current configuration"""
-        
-        # Determine mode
-        is_live = not CONFIG['paper_trading'] and CONFIG['api_key'] != 'YOUR_ALPACA_API_KEY'
-        mode = "🔴 LIVE" if is_live else "📄 PAPER"
-        
-        # Determine data source
-        if self._is_weekend() and CONFIG['weekend_mode']:
-            data_source = "🏖️ WEEKEND SIMULATION"
-        elif CONFIG['api_key'] != 'YOUR_ALPACA_API_KEY':
-            data_source = "📡 LIVE DATA"
-        else:
-            data_source = "🎮 SIMULATION"
-        
-        print(f"   ₿ Symbol: {CONFIG['symbol']}")
-        print(f"   💹 Mode: {mode}")
-        print(f"   📡 Data: {data_source}")
-        print(f"   📦 Position Size: {CONFIG['quantity']} BTC")
-        print(f"   🎯 Profit Target: ${CONFIG['profit_target_ticks']}")
-        print(f"   🛡️ Stop Loss: ${CONFIG['stop_loss_ticks']}")
-        print(f"   📊 Max Daily Trades: {CONFIG['max_daily_trades']}")
-        print(f"   💰 Daily Loss Limit: ${CONFIG['daily_loss_limit']}")
-        print(f"   🤖 ML Enabled: {'✅' if self.ml_interface else '❌'}")
-        
-        if is_live:
-            print(f"   🚨 WARNING: Real money trading active!")
-    
-    async def start_trading(self):
-        """Start the consolidated trading bot"""
+    async def start_scalping(self):
+        """Start the BTC scalping bot"""
         
         print("\n" + "="*70)
-        print("           🚀 STARTING CONSOLIDATED BTC TRADING BOT")
+        print("           🚀 STARTING €20 → €1M BTC SCALPING CHALLENGE")
         print("="*70)
         
         try:
@@ -236,32 +143,33 @@ class ConsolidatedBTCBot:
             # Wait for data connection
             await self._wait_for_data()
             
-            # Display account info
+            # Display initial account info
             self._display_account_info()
             
-            # Start main trading loop
-            print("🔄 Starting main trading loop...")
+            # Start main scalping loop
+            print("🔄 Starting scalping loop...")
+            print("💡 Strategy: Quick €8 profits with €4 stops")
             print("⏹️ Press Ctrl+C to stop")
             print("-" * 70)
             
             self.is_running = True
-            await self._main_trading_loop()
+            await self._main_scalping_loop()
             
         except KeyboardInterrupt:
-            print("\n🛑 Shutdown requested...")
+            print("\n🛑 Scalping session stopped by user")
             await self._shutdown()
         except Exception as e:
             logging.error(f"Bot error: {e}")
+            print(f"❌ Bot error: {e}")
             await self._shutdown()
     
-    async def _wait_for_data(self, max_wait: int = 15):
+    async def _wait_for_data(self, max_wait: int = 10):
         """Wait for data connection"""
         
         for i in range(max_wait):
-            if self.data_collector.tick_count > 0:
-                price = self.data_collector.get_current_price()
-                data_info = self.data_collector.get_data_source_info()
-                print(f"✅ BTC data connected - Price: ${price:,.2f} | Source: {data_info['source']}")
+            status = self.data_collector.get_connection_status()
+            if status['tick_count'] > 0:
+                print(f"✅ BTC data connected - Price: €{status['current_price']:,.2f} | Source: {status['source']}")
                 return True
             
             await asyncio.sleep(1)
@@ -275,127 +183,124 @@ class ConsolidatedBTCBot:
         """Display account information"""
         
         account = self.trade_executor.get_account_info()
-        print(f"💰 Account Balance: ${account['balance']:,.2f}")
-        print(f"💵 Available Cash: ${account['cash']:,.2f}")
-        
-        if account.get('btc_holdings', 0) > 0:
-            print(f"₿ BTC Holdings: {account['btc_holdings']:.6f}")
+        print(f"💰 Account Balance: €{account['balance']:,.2f}")
+        print(f"💵 Available Cash: €{account['cash']:,.2f}")
+        print(f"₿ BTC Holdings: {account['btc_holdings']:.6f}")
+        print(f"🔗 Connection: {account['connection_type']}")
     
-    async def _main_trading_loop(self):
-        """Main trading loop with comprehensive monitoring"""
+    async def _main_scalping_loop(self):
+        """Main scalping loop with challenge management"""
         
         last_status_time = time.time()
-        last_metrics_export = time.time()
+        last_balance_check = time.time()
         
         while self.is_running:
             try:
-                # Check circuit breaker
-                if self.circuit_breaker_active:
-                    print("🔴 Circuit breaker active - waiting...")
-                    await asyncio.sleep(60)
-                    continue
+                # Check if balance needs reset
+                if time.time() - last_balance_check > 30:  # Check every 30 seconds
+                    if self._should_reset_challenge():
+                        self._reset_challenge()
+                    last_balance_check = time.time()
                 
                 # Check daily limits
                 if self.trades_today >= CONFIG['max_daily_trades']:
                     print(f"🛑 Daily trade limit reached: {self.trades_today}")
                     break
                 
-                # Check daily loss limit
-                if self.daily_pnl <= -CONFIG['daily_loss_limit']:
-                    self._activate_circuit_breaker("Daily loss limit exceeded")
-                    continue
-                
                 # Check consecutive losses
-                if self.consecutive_losses >= 5:
-                    print(f"⚠️ {self.consecutive_losses} consecutive losses - pausing 60s")
-                    await asyncio.sleep(60)
+                if self.consecutive_losses >= CONFIG['max_consecutive_losses']:
+                    print(f"⚠️ {self.consecutive_losses} consecutive losses - pausing 30s")
+                    await asyncio.sleep(30)
                     self.consecutive_losses = 0
                 
                 # Periodic status update
                 current_time = time.time()
                 if current_time - last_status_time > CONFIG['status_update_interval']:
-                    self._log_status_update()
+                    self._display_status()
                     last_status_time = current_time
                 
-                # Periodic metrics export
-                if current_time - last_metrics_export > CONFIG['export_metrics_interval']:
-                    self._export_metrics()
-                    last_metrics_export = current_time
-                
-                await asyncio.sleep(0.1)  # Fast loop for responsiveness
+                await asyncio.sleep(0.1)  # Fast loop for scalping
                 
             except Exception as e:
-                logging.error(f"Trading loop error: {e}")
+                logging.error(f"Scalping loop error: {e}")
                 await asyncio.sleep(1)
         
         await self._shutdown()
     
     def on_tick_received(self, tick_data):
-        """Process incoming tick data with comprehensive logic"""
+        """Process incoming tick for scalping opportunities"""
         
         try:
-            # Get market analysis
-            market_analysis = self.data_collector.get_market_analysis()
-            if not market_analysis:
+            # Get market metrics for scalping
+            market_metrics = self.data_collector.get_scalping_metrics()
+            
+            if market_metrics.get('insufficient_data'):
                 return
             
-            # Get ML signal if available
-            ml_signal = None
-            if self.ml_interface:
-                ml_signal = self.ml_interface.process_tick(tick_data)
+            # Update trading logic balance
+            self.trading_logic.current_balance = self.current_balance
             
             # Generate trading signal
-            signal = self.trading_logic.evaluate_tick(tick_data, market_analysis, ml_signal)
+            signal = self.trading_logic.evaluate_tick(tick_data, market_metrics)
             
             # Process signals
-            if signal.signal_type in ['buy', 'sell']:
-                self._execute_signal(signal, tick_data, ml_signal)
-            elif signal.signal_type == 'close':
-                self._close_position(tick_data, signal.reasoning)
+            if signal.signal_type in [SignalType.BUY, SignalType.SELL]:
+                self._execute_scalping_signal(signal, tick_data)
+            elif signal.signal_type == SignalType.CLOSE:
+                self._close_scalping_position(tick_data, signal.reasoning)
             
         except Exception as e:
             logging.error(f"Tick processing error: {e}")
     
-    def _execute_signal(self, signal, tick_data, ml_signal=None):
-        """Execute trading signal"""
+    def _execute_scalping_signal(self, signal, tick_data):
+        """Execute scalping signal"""
         
         current_price = tick_data['price']
         
-        print(f"\n₿ BTC SIGNAL: {signal.signal_type.upper()} @ ${current_price:,.2f}")
+        # Calculate position size based on risk management
+        risk_amount = self.current_balance * (CONFIG['risk_per_trade_pct'] / 100)
+        position_size = risk_amount / CONFIG['stop_loss_euros']
+        
+        # Minimum position size check
+        if position_size < 0.0001:
+            logging.warning(f"Position size too small: {position_size}")
+            return
+        
+        print(f"\n₿ SCALP SIGNAL: {signal.signal_type.value.upper()} @ €{current_price:,.2f}")
         print(f"   🎯 Confidence: {signal.confidence:.2f}")
         print(f"   💡 Reasoning: {signal.reasoning}")
-        
-        if ml_signal and ml_signal.signal != 'hold':
-            print(f"   🤖 ML: {ml_signal.signal} ({ml_signal.confidence:.2f})")
+        print(f"   📦 Size: {position_size:.6f} BTC (€{position_size * current_price:.2f})")
         
         # Execute trade
-        trade = self.trade_executor.place_order(
-            CONFIG['symbol'], signal.signal_type, CONFIG['quantity'], current_price
+        order = self.trade_executor.place_order(
+            "BTCUSD", signal.signal_type.value, position_size, current_price
         )
         
-        if trade.status.value == "filled":
+        if order.status.value == "filled":
             # Update trading logic
             self.trading_logic.update_position(
-                signal.signal_type, trade.fill_price or current_price, CONFIG['quantity'], trade.timestamp
+                signal.signal_type.value, 
+                order.fill_price or current_price, 
+                position_size, 
+                order.timestamp
             )
             
-            # Log trade
-            self.trade_logger.log_trade(trade, trade_type="entry")
+            # Log entry trade
+            self.trade_logger.log_trade(order, 'entry', current_balance=self.current_balance)
             
             # Update counters
             self.trades_today += 1
             
-            print(f"✅ BTC ENTRY: {signal.signal_type.upper()} position opened")
-            print(f"   📦 Quantity: {CONFIG['quantity']} BTC")
-            print(f"   💰 Value: ${(trade.fill_price or current_price) * CONFIG['quantity']:,.2f}")
-            print(f"   🆔 Trade ID: {trade.trade_id}")
+            print(f"✅ SCALP ENTRY: {signal.signal_type.value.upper()} position opened")
+            print(f"   🎯 Target: €{signal.target_price:,.2f} (+€{CONFIG['profit_target_euros']})")
+            print(f"   🛡️ Stop: €{signal.stop_price:,.2f} (-€{CONFIG['stop_loss_euros']})")
             print(f"   📊 Trade #{self.trades_today} today")
             
         else:
-            print(f"❌ BTC ENTRY FAILED: {trade.status.value}")
+            print(f"❌ SCALP ENTRY FAILED: {order.status.value}")
     
-    def _close_position(self, tick_data, reasoning):
-        """Close current position"""
+    def _close_scalping_position(self, tick_data, reasoning):
+        """Close current scalping position"""
         
         current_price = tick_data['price']
         position_info = self.trading_logic.get_position_info()
@@ -403,172 +308,159 @@ class ConsolidatedBTCBot:
         if not position_info['has_position']:
             return
         
-        print(f"\n₿ BTC EXIT: {reasoning} @ ${current_price:,.2f}")
+        print(f"\n₿ SCALP EXIT: {reasoning} @ €{current_price:,.2f}")
         
-        # Close via trade executor
-        exit_trade = self.trade_executor.close_position(current_price)
+        # Close position
+        exit_order = self.trade_executor.close_position(
+            "BTCUSD", 
+            position_info['quantity'], 
+            current_price
+        )
         
-        if exit_trade and exit_trade.status.value == "filled":
+        if exit_order and exit_order.status.value == "filled":
             # Calculate P&L
             entry_price = position_info['entry_price']
-            if position_info['side'] == 'long':
-                pnl = (current_price - entry_price) * CONFIG['quantity']
-            else:
-                pnl = (entry_price - current_price) * CONFIG['quantity']
+            quantity = position_info['quantity']
             
-            # Update performance tracking
-            self._update_performance_metrics(pnl)
+            if position_info['side'] == 'long':
+                pnl = (current_price - entry_price) * quantity
+            else:
+                pnl = (entry_price - current_price) * quantity
+            
+            # Account for commissions
+            pnl -= (exit_order.commission + getattr(exit_order, 'entry_commission', 0))
+            
+            # Update balance and performance
+            self.current_balance += pnl
+            self.daily_pnl += pnl
+            self.total_trades += 1
+            
+            if pnl > 0:
+                self.winning_trades += 1
+                self.consecutive_losses = 0
+            else:
+                self.consecutive_losses += 1
             
             # Update trading logic
-            self.trading_logic.update_position('close', current_price, CONFIG['quantity'])
+            self.trading_logic.update_position('close', current_price, quantity)
+            self.trading_logic.current_balance = self.current_balance
             
             # Log exit trade
-            self.trade_logger.log_trade(exit_trade, trade_type="exit", profit_loss=pnl)
-            
-            # Record ML outcome
-            if self.ml_interface:
-                features = self.ml_interface.feature_extractor.extract_features()
-                if features:
-                    self.ml_interface.record_trade_outcome(features, exit_trade.side, pnl)
+            self.trade_logger.log_trade(
+                exit_order, 'exit', 
+                profit_loss=pnl, 
+                current_balance=self.current_balance
+            )
             
             # Display results
             pnl_symbol = "🟢" if pnl > 0 else "🔴"
-            pnl_percentage = (pnl / (entry_price * CONFIG['quantity'])) * 100 if entry_price > 0 else 0
+            win_rate = (self.winning_trades / self.total_trades) * 100 if self.total_trades > 0 else 0
             
-            print(f"✅ BTC EXIT: Position closed")
-            print(f"   💰 P&L: ${pnl:+.2f} ({pnl_percentage:+.2f}%) {pnl_symbol}")
-            print(f"   🆔 Trade ID: {exit_trade.trade_id}")
+            print(f"✅ SCALP CLOSED: {position_info['side'].upper()} position")
+            print(f"   💰 P&L: €{pnl:+.2f} {pnl_symbol}")
+            print(f"   💵 Balance: €{self.current_balance:.2f}")
+            print(f"   📊 Session: {self.winning_trades}W/{self.total_trades - self.winning_trades}L ({win_rate:.1f}%)")
+            
+            # Check if reached next level
+            self._check_level_progress()
             
         else:
-            print(f"❌ BTC EXIT FAILED")
+            print(f"❌ SCALP EXIT FAILED")
     
-    def _update_performance_metrics(self, pnl: float):
-        """Update comprehensive performance metrics"""
+    def _check_level_progress(self):
+        """Check if reached next challenge level"""
         
-        self.performance_metrics['total_trades'] += 1
-        self.performance_metrics['total_pnl'] += pnl
-        self.daily_pnl += pnl
+        current_level = 0
+        target = 20.0
         
-        if pnl > 0:
-            self.performance_metrics['winning_trades'] += 1
-            self.consecutive_losses = 0
-        else:
-            self.performance_metrics['losing_trades'] += 1
-            self.consecutive_losses += 1
+        # Calculate current level
+        while target <= self.current_balance and target < 1000000:
+            current_level += 1
+            target *= 2
         
-        # Calculate win rate
-        total_trades = self.performance_metrics['total_trades']
-        if total_trades > 0:
-            self.performance_metrics['win_rate'] = (self.performance_metrics['winning_trades'] / total_trades) * 100
-            self.performance_metrics['avg_pnl'] = self.performance_metrics['total_pnl'] / total_trades
+        next_target = min(target, 1000000)
         
-        # Update peak and drawdown
-        if self.performance_metrics['total_pnl'] > self.performance_metrics['peak_pnl']:
-            self.performance_metrics['peak_pnl'] = self.performance_metrics['total_pnl']
-        
-        current_drawdown = self.performance_metrics['peak_pnl'] - self.performance_metrics['total_pnl']
-        if current_drawdown > self.performance_metrics['max_drawdown']:
-            self.performance_metrics['max_drawdown'] = current_drawdown
-        
-        # Win rate monitoring
-        if (CONFIG['enable_win_rate_monitoring'] and 
-            total_trades >= 10 and 
-            self.performance_metrics['win_rate'] < CONFIG['win_rate_alert_threshold']):
-            logging.warning(f"⚠️ WIN RATE ALERT: {self.performance_metrics['win_rate']:.1f}% below threshold")
+        # Check for level completion
+        if self.current_balance >= next_target and next_target <= 1000000:
+            print(f"\n🎉 LEVEL {current_level + 1} REACHED! €{self.current_balance:.2f}")
+            logging.info(f"🎉 Challenge Level {current_level + 1} reached: €{self.current_balance:.2f}")
+            
+            if next_target >= 1000000:
+                print("🏆 CHALLENGE COMPLETED! €1,000,000 REACHED!")
+                logging.info("🏆 €20 to €1M Challenge COMPLETED!")
+                self.is_running = False
     
-    def _activate_circuit_breaker(self, reason: str):
-        """Activate circuit breaker"""
-        self.circuit_breaker_active = True
-        print(f"\n🔴 CIRCUIT BREAKER ACTIVATED: {reason}")
-        print(f"🔴 Daily P&L: ${self.daily_pnl:.2f}")
-        logging.critical(f"CIRCUIT BREAKER: {reason}")
-        
-        # Auto-deactivate after 1 hour
-        import threading
-        def deactivate():
-            time.sleep(3600)
-            self.circuit_breaker_active = False
-            print("🟢 Circuit breaker deactivated")
-        
-        threading.Thread(target=deactivate, daemon=True).start()
+    def _should_reset_challenge(self) -> bool:
+        """Check if challenge should be reset"""
+        return self.current_balance < CONFIG['force_reset_balance']
     
-    def _log_status_update(self):
-        """Log comprehensive status update"""
+    def _reset_challenge(self):
+        """Reset challenge to €20"""
         
-        current_time = datetime.now().strftime('%H:%M:%S')
+        print(f"\n🔄 RESETTING CHALLENGE")
+        print(f"   Previous balance: €{self.current_balance:.2f}")
+        print(f"   Trades completed: {self.total_trades}")
+        
+        # Start new attempt
+        self.challenge_attempt += 1
+        self.trade_logger.start_new_challenge_attempt()
+        
+        # Reset all metrics
+        self.current_balance = CONFIG['starting_balance']
+        self.total_trades = 0
+        self.winning_trades = 0
+        self.daily_pnl = 0.0
+        self.consecutive_losses = 0
+        self.trades_today = 0
+        
+        # Reset trading logic
+        self.trading_logic.reset_to_twenty_euros()
+        self.trading_logic.current_balance = self.current_balance
+        
+        print(f"✅ Challenge attempt #{self.challenge_attempt} started with €20")
+        logging.info(f"Challenge reset - Attempt #{self.challenge_attempt} started")
+    
+    def _display_status(self):
+        """Display current scalping status"""
+        
         current_price = self.data_collector.get_current_price()
-        data_info = self.data_collector.get_data_source_info()
         position_info = self.trading_logic.get_position_info()
         
-        print(f"\n₿ BTC STATUS - {current_time}")
-        print(f"   💹 {CONFIG['symbol']}: ${current_price:,.2f}")
-        print(f"   📡 Source: {data_info['source']} | Ticks: {data_info['tick_count']}")
+        # Calculate level and progress
+        current_level = 0
+        target = 20.0
+        while target <= self.current_balance and target < 1000000:
+            current_level += 1
+            target *= 2
+        next_target = min(target, 1000000)
+        progress = (self.current_balance / next_target) * 100
         
-        # Position information
+        print(f"\n₿ SCALPING STATUS - {datetime.now().strftime('%H:%M:%S')}")
+        print(f"   💹 BTC Price: €{current_price:,.2f}")
+        print(f"   💰 Balance: €{self.current_balance:.2f}")
+        print(f"   📊 Level: {current_level} → {current_level + 1} ({progress:.1f}%)")
+        print(f"   🎯 Next Target: €{next_target:,.0f}")
+        
         if position_info['has_position']:
-            unrealized_pnl = self.trading_logic.position.unrealized_pnl
             time_in_pos = position_info['time_in_position']
-            print(f"   📍 Position: {position_info['side'].upper()} @ ${position_info['entry_price']:,.2f}")
-            print(f"   💰 Unrealized: ${unrealized_pnl:+.2f} ({time_in_pos:.0f}s)")
+            print(f"   📍 Position: {position_info['side'].upper()} @ €{position_info['entry_price']:,.2f} ({time_in_pos:.0f}s)")
         else:
             print(f"   📍 Position: NONE")
         
-        # Trading metrics
-        print(f"   📊 Trades Today: {self.trades_today}/{CONFIG['max_daily_trades']}")
-        print(f"   🎯 Win Rate: {self.performance_metrics['win_rate']:.1f}%")
-        print(f"   💰 Daily P&L: ${self.daily_pnl:+.2f}")
+        # Performance metrics
+        win_rate = (self.winning_trades / max(1, self.total_trades)) * 100
+        print(f"   📈 Trades: {self.trades_today}/{CONFIG['max_daily_trades']} today")
+        print(f"   🏆 Record: {self.winning_trades}W/{self.total_trades - self.winning_trades}L ({win_rate:.1f}%)")
+        print(f"   💵 Daily P&L: €{self.daily_pnl:+.2f}")
         
-        # Risk metrics
-        risk_utilization = (abs(self.daily_pnl) / CONFIG['daily_loss_limit']) * 100 if self.daily_pnl < 0 else 0
-        print(f"   ⚠️ Risk Level: {risk_utilization:.1f}%")
-        
-        # ML stats
-        if self.ml_interface:
-            ml_stats = self.ml_interface.get_ml_stats()
-            if ml_stats.get('model_trained', False):
-                print(f"   🤖 ML: {ml_stats['accuracy']:.1f}% accuracy (v{ml_stats.get('model_version', 1)})")
-        
-        # Connection health
-        health = self.data_collector.get_connection_health()
-        if health['health_score'] < 70:
-            print(f"   ⚠️ Connection: {health['status']} ({health['health_score']}/100)")
-    
-    def _export_metrics(self):
-        """Export performance metrics to file"""
-        
-        session_duration = (datetime.now() - self.session_start).total_seconds() / 60
-        
-        metrics = {
-            'timestamp': datetime.now().isoformat(),
-            'session_duration_minutes': session_duration,
-            'trades_completed': self.performance_metrics['total_trades'],
-            'win_rate': self.performance_metrics['win_rate'],
-            'total_pnl': self.performance_metrics['total_pnl'],
-            'daily_pnl': self.daily_pnl,
-            'max_drawdown': self.performance_metrics['max_drawdown'],
-            'consecutive_losses': self.consecutive_losses,
-            'circuit_breaker_active': self.circuit_breaker_active,
-            'data_source': self.data_collector.get_data_source_info()['source']
-        }
-        
-        # Add ML metrics if available
-        if self.ml_interface:
-            ml_stats = self.ml_interface.get_ml_stats()
-            metrics['ml_accuracy'] = ml_stats.get('accuracy', 0)
-            metrics['ml_model_version'] = ml_stats.get('model_version', 0)
-        
-        # Save to file
-        metrics_file = CONFIG['log_file'].replace('.csv', '_metrics.json')
-        try:
-            with open(metrics_file, 'a') as f:
-                f.write(json.dumps(metrics) + '\n')
-        except Exception as e:
-            logging.error(f"Failed to export metrics: {e}")
+        # Risk assessment
+        if self.consecutive_losses > 0:
+            print(f"   ⚠️ Consecutive Losses: {self.consecutive_losses}")
     
     async def _shutdown(self):
-        """Comprehensive shutdown procedure"""
+        """Shutdown scalping bot"""
         
-        print("\n🛑 Shutting down Consolidated BTC Bot...")
+        print("\n🛑 Shutting down BTC scalping bot...")
         self.is_running = False
         
         try:
@@ -577,119 +469,98 @@ class ConsolidatedBTCBot:
             if position_info['has_position']:
                 print("🔄 Closing open position...")
                 current_price = self.data_collector.get_current_price()
-                self._close_position({'price': current_price}, "Bot shutdown")
+                self._close_scalping_position({'price': current_price}, "Bot shutdown")
             
             # Stop data feed
             self.data_collector.stop_data_feed()
             
-            # Final ML training
-            if self.ml_interface:
-                print("🤖 Final ML model training...")
-                self.ml_interface.force_retrain()
-            
-            # Export final metrics
-            self._export_metrics()
-            
             # Generate final report
             self._generate_final_report()
             
-            # Cleanup
+            # Cleanup logger
             self.trade_logger.cleanup()
             
-            print("✅ Consolidated BTC Bot shutdown completed")
+            print("✅ BTC scalping bot shutdown completed")
             
         except Exception as e:
             logging.error(f"Shutdown error: {e}")
     
     def _generate_final_report(self):
-        """Generate comprehensive final report"""
+        """Generate final scalping session report"""
         
         session_duration = datetime.now() - self.session_start
+        win_rate = (self.winning_trades / max(1, self.total_trades)) * 100
         
-        print("\n" + "="*80)
-        print("           ₿ CONSOLIDATED BTC TRADING FINAL REPORT")
-        print("="*80)
+        print("\n" + "="*70)
+        print("           ₿ BTC SCALPING SESSION FINAL REPORT")
+        print("="*70)
         
         # Session overview
         print(f"Session Duration: {str(session_duration).split('.')[0]}")
-        print(f"Trading Mode: {'🔴 LIVE' if not CONFIG['paper_trading'] else '📄 PAPER'}")
-        print(f"Data Source: {self.data_collector.get_data_source_info()['source'].upper()}")
+        print(f"Challenge Attempt: #{self.challenge_attempt}")
+        print(f"Starting Balance: €{CONFIG['starting_balance']}")
+        print(f"Final Balance: €{self.current_balance:.2f}")
         
         # Performance metrics
-        print(f"\n📊 PERFORMANCE METRICS:")
-        print(f"Total Trades: {self.performance_metrics['total_trades']}")
-        print(f"Win Rate: {self.performance_metrics['win_rate']:.1f}%")
-        print(f"Total P&L: ${self.performance_metrics['total_pnl']:+.2f}")
-        print(f"Daily P&L: ${self.daily_pnl:+.2f}")
-        print(f"Average P&L: ${self.performance_metrics['avg_pnl']:+.2f}")
-        print(f"Max Drawdown: ${self.performance_metrics['max_drawdown']:.2f}")
+        balance_growth = ((self.current_balance - CONFIG['starting_balance']) / CONFIG['starting_balance']) * 100
+        print(f"\n📊 PERFORMANCE:")
+        print(f"Balance Growth: {balance_growth:+.1f}%")
+        print(f"Total Trades: {self.total_trades}")
+        print(f"Win Rate: {win_rate:.1f}%")
+        print(f"Daily P&L: €{self.daily_pnl:+.2f}")
         
-        # Risk analysis
-        risk_utilization = (abs(self.daily_pnl) / CONFIG['daily_loss_limit']) * 100 if self.daily_pnl < 0 else 0
-        print(f"\n⚠️ RISK ANALYSIS:")
-        print(f"Risk Utilization: {risk_utilization:.1f}% of daily limit")
-        print(f"Circuit Breaker Triggered: {'Yes' if self.circuit_breaker_active else 'No'}")
-        print(f"Max Consecutive Losses: {self.consecutive_losses}")
+        # Challenge progress
+        current_level = 0
+        target = 20.0
+        while target <= self.current_balance and target < 1000000:
+            current_level += 1
+            target *= 2
         
-        # Trading efficiency
-        trades_per_hour = self.performance_metrics['total_trades'] / max(1, session_duration.total_seconds() / 3600)
-        print(f"\n📈 EFFICIENCY METRICS:")
-        print(f"Trading Frequency: {trades_per_hour:.1f} trades/hour")
-        print(f"Position Utilization: {self.trades_today}/{CONFIG['max_daily_trades']} daily limit")
+        print(f"\n🎯 CHALLENGE PROGRESS:")
+        print(f"Current Level: {current_level}")
+        print(f"Distance to €1M: €{1000000 - self.current_balance:,.0f}")
         
-        # ML performance
-        if self.ml_interface:
-            ml_stats = self.ml_interface.get_ml_stats()
-            print(f"\n🤖 ML PERFORMANCE:")
-            print(f"Model Version: {ml_stats.get('model_version', 'N/A')}")
-            print(f"Accuracy: {ml_stats.get('accuracy', 0):.1f}%")
-            print(f"Training Samples: {ml_stats.get('training_samples', 0)}")
+        # Assessment
+        if self.current_balance >= 1000000:
+            print("🏆 CHALLENGE COMPLETED! 🏆")
+        elif win_rate >= 60 and self.daily_pnl > 0:
+            print("🟢 EXCELLENT SESSION!")
+        elif win_rate >= 50:
+            print("🟡 GOOD SESSION")
+        else:
+            print("🔴 NEEDS IMPROVEMENT")
         
-        # Trade executor stats
-        exec_stats = self.trade_executor.get_trading_stats()
-        print(f"\n📋 EXECUTION STATS:")
-        print(f"Order Success Rate: {exec_stats['success_rate']:.1f}%")
-        print(f"Average Slippage: ${exec_stats['avg_slippage']:.2f}")
-        print(f"Total Commission: ${exec_stats['total_commission']:.2f}")
-        
-        print("="*80)
-
-
-def validate_setup():
-    """Validate setup before starting"""
-    print("🔍 Validating setup...")
-    
-    # Check if we're in live mode
-    is_live = not CONFIG['paper_trading'] and CONFIG['api_key'] != 'YOUR_ALPACA_API_KEY'
-    
-    if is_live:
-        print("🔴 LIVE TRADING MODE DETECTED!")
-        print("🔴 This will trade with REAL MONEY!")
-        print("🔴 Make sure you understand the risks!")
-        
-        # Give user time to abort
-        for i in range(5, 0, -1):
-            print(f"🔴 Starting in {i} seconds... (Press Ctrl+C to abort)")
-            time.sleep(1)
-    
-    print("✅ Setup validation completed")
+        print("="*70)
 
 
 async def main():
-    """Main entry point"""
+    """Main entry point for BTC scalping bot"""
     
-    print("₿ Consolidated BTC Trading Bot")
+    print("₿ BTC SCALPING BOT - €20 to €1M Challenge")
     print("=" * 50)
-    print("6-File Architecture: Enhanced & Streamlined")
+    print("4-File Core Architecture:")
+    print("  1. data_collection.py - BTC tick data stream")
+    print("  2. trading_logic.py - Scalping strategy")
+    print("  3. trade_execution.py - Order management")
+    print("  4. logger.py - Challenge tracking")
     print()
     
     # Validate setup
-    validate_setup()
+    if not CONFIG['api_key'] or CONFIG['api_key'] == 'YOUR_ALPACA_API_KEY':
+        print("⚠️ No API keys configured - will use simulation mode")
+        print("💡 For live trading, add your Alpaca API keys to CONFIG")
+        print()
     
     # Create and start bot
-    bot = ConsolidatedBTCBot()
-    await bot.start_trading()
+    bot = BTCScalpingBot()
+    await bot.start_scalping()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\n👋 BTC Scalping Bot stopped")
+    except Exception as e:
+        print(f"\n❌ Error: {e}")
+        logging.error(f"Main error: {e}")

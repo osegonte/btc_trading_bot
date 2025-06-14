@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """
-Enhanced Trade Execution for BTC/USD with Risk Management
-Includes: Position tracking, wash trade protection, enhanced error handling
+BTC Trade Execution - Core File 3/4
+Purpose: Handle Alpaca API interaction for fast BTC order execution
+Ensures quick, efficient execution of scalping signals
 """
 
 import logging
 import time
 import uuid
-from datetime import datetime, timedelta
-from typing import Dict, Optional, List
+import numpy as np
+from datetime import datetime
+from typing import Dict, Optional
 from dataclasses import dataclass
 from enum import Enum
 
@@ -22,471 +24,386 @@ class OrderStatus(Enum):
 
 
 @dataclass
-class BTCTrade:
-    """Enhanced BTC trade data structure"""
+class BTCOrder:
+    """BTC order structure for scalping execution"""
     symbol: str
-    side: str
-    quantity: float
-    price: float
+    side: str          # 'buy' or 'sell'
+    quantity: float    # BTC amount
+    price: float       # Entry price
+    order_type: str = "market"
     status: OrderStatus = OrderStatus.PENDING
-    trade_id: str = ""
+    order_id: str = ""
     timestamp: str = ""
     fill_price: Optional[float] = None
     commission: float = 0.0
     slippage: float = 0.0
     
     def __post_init__(self):
-        if not self.trade_id:
-            self.trade_id = f"{self.symbol}_{self.side}_{int(time.time())}_{uuid.uuid4().hex[:8]}"
+        if not self.order_id:
+            self.order_id = f"BTC_{self.side}_{int(time.time())}_{uuid.uuid4().hex[:6]}"
         if not self.timestamp:
             self.timestamp = datetime.now().isoformat()
 
 
-class PositionTracker:
-    """Track positions to prevent conflicts"""
-    def __init__(self):
-        self.current_position: Optional[BTCTrade] = None
-        self.position_history: List[BTCTrade] = []
-        self.daily_trades = 0
-        self.wash_trade_window = timedelta(minutes=5)
-    
-    def can_open_position(self, side: str, price: float) -> tuple[bool, str]:
-        """Check if position can be opened"""
-        if self.current_position:
-            return False, f"Already have {self.current_position.side} position"
-        
-        # Check for wash trade risk
-        if self._is_wash_trade_risk(side, price):
-            return False, "Potential wash trade detected"
-        
-        return True, "OK"
-    
-    def _is_wash_trade_risk(self, side: str, price: float) -> bool:
-        """Check for wash trade patterns"""
-        if not self.position_history:
-            return False
-        
-        cutoff_time = datetime.now() - self.wash_trade_window
-        recent_trades = [
-            trade for trade in self.position_history[-10:]
-            if datetime.fromisoformat(trade.timestamp) > cutoff_time
-        ]
-        
-        # Count similar trades
-        similar_trades = 0
-        for trade in recent_trades:
-            if (trade.side == side and 
-                abs(trade.price - price) / price < 0.01):  # Within 1%
-                similar_trades += 1
-        
-        return similar_trades >= 3
-    
-    def open_position(self, trade: BTCTrade):
-        """Record position opening"""
-        self.current_position = trade
-        self.position_history.append(trade)
-        self.daily_trades += 1
-    
-    def close_position(self) -> Optional[BTCTrade]:
-        """Record position closing"""
-        if self.current_position:
-            closed_position = self.current_position
-            self.current_position = None
-            return closed_position
-        return None
-
-
-class EnhancedBTCTradeExecutor:
-    """Enhanced trade executor for BTC/USD with comprehensive risk management"""
+class BTCTradeExecutor:
+    """
+    Fast BTC trade executor for scalping
+    Handles order placement and execution via Alpaca API
+    """
     
     def __init__(self, config: Dict = None):
         config = config or {}
         
-        # Configuration
+        # API Configuration
         self.paper_trading = config.get('paper_trading', True)
         self.api_key = config.get('api_key', "")
         self.secret_key = config.get('secret_key', "")
-        self.api = None
+        self.alpaca_api = None
         
-        # Enhanced settings
-        self.min_btc_quantity = 0.0001
-        self.max_slippage = 3.0  # Max $3 slippage for BTC
-        self.order_timeout = 10.0  # 10 seconds timeout
-        self.max_retries = 3
+        # Execution settings for scalping
+        self.max_slippage_euros = 2.0      # Max €2 slippage per trade
+        self.order_timeout = 5.0           # 5 second timeout for scalping
+        self.max_retries = 2               # Quick retries for scalping
         
-        # Account simulation
-        self.account_balance = config.get('initial_balance', 100000.0)
-        self.cash = self.account_balance
-        self.btc_holdings = 0.0
-        
-        # Position tracking
-        self.position_tracker = PositionTracker()
+        # Simulated account for demo/testing
+        self.simulated_balance = 20.0      # Start with €20
+        self.simulated_btc_holdings = 0.0
         
         # Performance tracking
         self.total_orders = 0
         self.successful_orders = 0
         self.total_slippage = 0.0
         self.total_commission = 0.0
+        self.execution_times = []
         
-        # Risk management
-        self.daily_loss_limit = config.get('daily_loss_limit', 500.0)
-        self.daily_pnl = 0.0
-        self.max_position_size = config.get('max_position_size', 0.01)
-        
-        # Connection management
-        self.connection_stable = True
+        # Order management
+        self.pending_orders = {}
         self.last_order_time = None
-        self.min_order_interval = 2.0  # Minimum 2 seconds between orders
+        self.min_order_interval = 1.0     # 1 second minimum between orders
         
-        # Initialize API if credentials provided
-        if self.api_key and self.secret_key:
-            self._init_alpaca_api()
+        # Initialize API connection
+        if self.api_key and self.secret_key and self.api_key != 'YOUR_ALPACA_API_KEY':
+            self._initialize_alpaca_api()
         else:
-            logging.info("🎮 Enhanced BTC executor in simulation mode")
+            logging.info("🎮 BTC Executor in simulation mode")
+            print("📄 Trade executor: Simulation mode (demo trading)")
     
-    def _init_alpaca_api(self):
-        """Initialize Alpaca API with enhanced error handling"""
+    def _initialize_alpaca_api(self):
+        """Initialize Alpaca API for BTC trading"""
         try:
             import alpaca_trade_api as tradeapi
             
             base_url = 'https://paper-api.alpaca.markets' if self.paper_trading else 'https://api.alpaca.markets'
             
-            self.api = tradeapi.REST(
-                self.api_key, 
-                self.secret_key, 
-                base_url, 
+            self.alpaca_api = tradeapi.REST(
+                self.api_key,
+                self.secret_key,
+                base_url,
                 api_version='v2'
             )
             
             # Test connection
-            account = self.api.get_account()
-            self.account_balance = float(account.portfolio_value)
-            self.cash = float(account.cash)
+            account = self.alpaca_api.get_account()
             
             mode = "📄 PAPER" if self.paper_trading else "🔴 LIVE"
-            logging.info(f"✅ Enhanced Alpaca connected - {mode} mode")
-            logging.info(f"💰 Account: ${self.account_balance:,.2f}")
-            
-            self.connection_stable = True
+            logging.info(f"✅ Alpaca API connected - {mode} trading")
+            print(f"✅ Alpaca connected - {mode} mode")
+            print(f"💰 Account value: ${float(account.portfolio_value):,.2f}")
             
         except ImportError:
-            logging.warning("alpaca-trade-api not installed - using enhanced simulation")
-            self.api = None
-            self.connection_stable = False
+            logging.warning("alpaca-trade-api not installed - using simulation")
+            print("⚠️ alpaca-trade-api not installed - using simulation")
+            self.alpaca_api = None
         except Exception as e:
-            logging.error(f"Enhanced Alpaca connection failed: {e}")
-            self.api = None
-            self.connection_stable = False
+            logging.error(f"Alpaca connection failed: {e}")
+            print(f"❌ Alpaca connection failed: {e}")
+            self.alpaca_api = None
     
-    def place_order(self, symbol: str, side: str, quantity: float, current_price: float) -> BTCTrade:
-        """Place enhanced BTC order with comprehensive validation"""
+    def place_order(self, symbol: str, side: str, quantity: float, 
+                   current_price: float, order_type: str = "market") -> BTCOrder:
+        """
+        Place BTC order with fast execution for scalping
+        Returns order object with execution details
+        """
         
-        # Create trade object
-        trade = BTCTrade(
+        # Create order object
+        order = BTCOrder(
             symbol=symbol,
             side=side,
             quantity=quantity,
-            price=current_price
+            price=current_price,
+            order_type=order_type
         )
         
         self.total_orders += 1
         
-        # Enhanced pre-order validation
-        validation_result = self._validate_order(trade)
-        if not validation_result[0]:
-            trade.status = OrderStatus.REJECTED
-            logging.warning(f"Order rejected: {validation_result[1]}")
-            return trade
+        # Pre-execution validation
+        if not self._validate_order(order):
+            order.status = OrderStatus.REJECTED
+            return order
         
         # Execute order
+        start_time = time.time()
+        
         try:
-            if self.api and self.connection_stable:
-                return self._execute_alpaca_order(trade)
+            if self.alpaca_api:
+                executed_order = self._execute_alpaca_order(order)
             else:
-                return self._execute_simulated_order(trade)
-                
+                executed_order = self._execute_simulated_order(order)
+            
+            # Track execution time
+            execution_time = time.time() - start_time
+            self.execution_times.append(execution_time)
+            
+            # Update last order time
+            self.last_order_time = time.time()
+            
+            return executed_order
+            
         except Exception as e:
-            logging.error(f"Enhanced order execution failed: {e}")
-            trade.status = OrderStatus.FAILED
-            return trade
+            logging.error(f"Order execution failed: {e}")
+            order.status = OrderStatus.FAILED
+            return order
     
-    def _validate_order(self, trade: BTCTrade) -> tuple[bool, str]:
-        """Comprehensive order validation"""
+    def _validate_order(self, order: BTCOrder) -> bool:
+        """Validate order before execution"""
         
-        # Basic validation
-        if trade.quantity < self.min_btc_quantity:
-            return False, f"Order too small: {trade.quantity} < {self.min_btc_quantity}"
+        # Check minimum order size
+        if order.quantity < 0.0001:  # Minimum BTC amount
+            logging.warning(f"Order too small: {order.quantity} BTC")
+            return False
         
-        if trade.quantity > self.max_position_size:
-            return False, f"Order too large: {trade.quantity} > {self.max_position_size}"
+        # Check maximum order size (risk management)
+        max_order_size = 0.01  # Max 0.01 BTC per order
+        if order.quantity > max_order_size:
+            logging.warning(f"Order too large: {order.quantity} > {max_order_size}")
+            return False
         
-        if trade.price <= 0:
-            return False, f"Invalid price: ${trade.price}"
-        
-        # Position validation
-        can_open, reason = self.position_tracker.can_open_position(trade.side, trade.price)
-        if not can_open:
-            return False, reason
-        
-        # Timing validation
+        # Check order frequency (prevent overtrading)
         if self.last_order_time:
             time_since_last = time.time() - self.last_order_time
             if time_since_last < self.min_order_interval:
-                return False, f"Too soon since last order: {time_since_last:.1f}s"
+                logging.warning(f"Order too frequent: {time_since_last:.1f}s")
+                return False
         
-        # Balance validation
-        trade_value = trade.quantity * trade.price
-        if trade.side == 'buy':
-            if self.cash < trade_value:
-                return False, f"Insufficient cash: ${trade_value:,.2f} needed, ${self.cash:,.2f} available"
-        else:  # sell
-            if self.btc_holdings < trade.quantity:
-                return False, f"Insufficient BTC: {trade.quantity} needed, {self.btc_holdings} available"
+        # Check simulated balance
+        if not self.alpaca_api:
+            order_value = order.quantity * order.price
+            if order.side == 'buy':
+                if self.simulated_balance < order_value:
+                    logging.warning(f"Insufficient balance: €{order_value:.2f} needed")
+                    return False
+            else:  # sell
+                if self.simulated_btc_holdings < order.quantity:
+                    logging.warning(f"Insufficient BTC: {order.quantity} needed")
+                    return False
         
-        # Daily loss limit
-        if self.daily_pnl <= -self.daily_loss_limit:
-            return False, f"Daily loss limit reached: ${self.daily_pnl:.2f}"
-        
-        return True, "OK"
+        return True
     
-    def _execute_alpaca_order(self, trade: BTCTrade) -> BTCTrade:
-        """Execute order via Alpaca API with retries"""
+    def _execute_alpaca_order(self, order: BTCOrder) -> BTCOrder:
+        """Execute order via Alpaca API"""
         
         for attempt in range(self.max_retries):
             try:
-                # Submit order
-                order = self.api.submit_order(
-                    symbol=trade.symbol,
-                    qty=trade.quantity,
-                    side=trade.side,
+                # Submit market order for fast execution
+                alpaca_order = self.alpaca_api.submit_order(
+                    symbol=order.symbol,
+                    qty=order.quantity,
+                    side=order.side,
                     type='market',
-                    time_in_force='gtc'
+                    time_in_force='day'
                 )
                 
                 # Wait for fill with timeout
-                start_time = time.time()
-                while time.time() - start_time < self.order_timeout:
-                    updated_order = self.api.get_order(order.id)
+                start_wait = time.time()
+                while time.time() - start_wait < self.order_timeout:
+                    updated_order = self.alpaca_api.get_order(alpaca_order.id)
                     
                     if updated_order.status == 'filled':
-                        # Order filled successfully
+                        # Order successfully filled
                         fill_price = float(updated_order.filled_avg_price)
-                        trade.fill_price = fill_price
-                        trade.status = OrderStatus.FILLED
-                        trade.slippage = abs(fill_price - trade.price)
+                        order.fill_price = fill_price
+                        order.status = OrderStatus.FILLED
+                        order.slippage = abs(fill_price - order.price)
+                        order.commission = float(updated_order.commission) if updated_order.commission else 0.0
                         
-                        # Update tracking
-                        self._update_holdings(trade, fill_price)
-                        self.position_tracker.open_position(trade)
                         self.successful_orders += 1
-                        self.total_slippage += trade.slippage
-                        self.last_order_time = time.time()
+                        self.total_slippage += order.slippage
+                        self.total_commission += order.commission
                         
-                        logging.info(f"✅ Alpaca BTC order filled: {trade.side.upper()} {trade.quantity} @ ${fill_price:,.2f}")
-                        return trade
+                        logging.info(f"✅ Alpaca order filled: {order.side.upper()} {order.quantity} BTC @ ${fill_price:,.2f}")
+                        return order
                     
                     elif updated_order.status in ['rejected', 'canceled']:
-                        trade.status = OrderStatus.REJECTED
-                        logging.warning(f"❌ Alpaca order {updated_order.status}: {order.id}")
-                        return trade
+                        order.status = OrderStatus.REJECTED
+                        logging.warning(f"❌ Alpaca order rejected: {alpaca_order.id}")
+                        return order
                     
-                    time.sleep(0.1)
+                    time.sleep(0.1)  # Check every 100ms
                 
-                # Timeout - order still pending
-                trade.status = OrderStatus.PENDING
-                logging.warning(f"⚠️ Alpaca order timeout: {order.id}")
-                return trade
+                # Timeout - order might still be pending
+                order.status = OrderStatus.PENDING
+                logging.warning(f"⚠️ Order timeout: {alpaca_order.id}")
+                return order
                 
             except Exception as e:
                 error_msg = str(e).lower()
                 
-                # Handle specific Alpaca errors
-                if 'wash trade' in error_msg:
-                    trade.status = OrderStatus.REJECTED
-                    logging.warning(f"❌ Wash trade detected: {e}")
-                    return trade
-                elif 'insufficient' in error_msg:
-                    trade.status = OrderStatus.REJECTED
-                    logging.warning(f"❌ Insufficient balance: {e}")
-                    return trade
+                if 'insufficient' in error_msg:
+                    order.status = OrderStatus.REJECTED
+                    logging.warning(f"❌ Insufficient funds: {e}")
+                    return order
                 elif attempt < self.max_retries - 1:
-                    logging.warning(f"⚠️ Alpaca order attempt {attempt + 1} failed: {e}")
-                    time.sleep(1)  # Wait before retry
+                    logging.warning(f"⚠️ Order attempt {attempt + 1} failed: {e}")
+                    time.sleep(0.5)  # Brief wait before retry
                     continue
                 else:
-                    trade.status = OrderStatus.FAILED
-                    logging.error(f"❌ Alpaca order failed after {self.max_retries} attempts: {e}")
-                    return trade
+                    order.status = OrderStatus.FAILED
+                    logging.error(f"❌ Order failed after {self.max_retries} attempts: {e}")
+                    return order
         
-        return trade
+        return order
     
-    def _execute_simulated_order(self, trade: BTCTrade) -> BTCTrade:
-        """Execute simulated order with realistic behavior"""
+    def _execute_simulated_order(self, order: BTCOrder) -> BTCOrder:
+        """Execute simulated order for demo trading"""
         
         try:
-            # Simulate order processing time
-            time.sleep(0.1 + np.random.uniform(0, 0.2))
+            # Simulate realistic execution delay
+            execution_delay = np.random.uniform(0.05, 0.2)  # 50-200ms
+            time.sleep(execution_delay)
             
-            # Calculate realistic slippage
-            slippage_direction = 1 if trade.side == 'buy' else -1
-            base_slippage = np.random.uniform(0.5, self.max_slippage)
+            # Calculate realistic slippage for BTC
+            base_slippage = np.random.uniform(0.5, 2.0)  # €0.50 - €2.00
+            slippage_direction = 1 if order.side == 'buy' else -1
             
-            # Higher slippage during high volatility (simulated)
-            volatility_factor = 1 + np.random.uniform(0, 0.5)
-            slippage = base_slippage * volatility_factor * slippage_direction
+            # Higher slippage during volatile periods (simulated)
+            volatility_factor = 1 + np.random.uniform(0, 0.3)
+            total_slippage = base_slippage * volatility_factor * slippage_direction
             
-            fill_price = max(1.0, trade.price + slippage)
+            # Apply slippage to fill price
+            fill_price = max(1.0, order.price + total_slippage)
             
-            # Simulate occasional order rejection (1% chance)
+            # Simulate occasional rejection (1% chance)
             if np.random.random() < 0.01:
-                trade.status = OrderStatus.REJECTED
+                order.status = OrderStatus.REJECTED
                 logging.info(f"🎮 Simulated order rejection")
-                return trade
+                return order
             
-            # Order filled
-            trade.fill_price = fill_price
-            trade.status = OrderStatus.FILLED
-            trade.slippage = abs(slippage)
-            trade.commission = trade.quantity * fill_price * 0.001  # 0.1% commission
+            # Order filled successfully
+            order.fill_price = fill_price
+            order.status = OrderStatus.FILLED
+            order.slippage = abs(total_slippage)
+            order.commission = order.quantity * fill_price * 0.001  # 0.1% commission
             
-            # Update tracking
-            self._update_holdings(trade, fill_price)
-            self.position_tracker.open_position(trade)
+            # Update simulated account
+            self._update_simulated_account(order)
+            
+            # Track performance
             self.successful_orders += 1
-            self.total_slippage += trade.slippage
-            self.total_commission += trade.commission
-            self.last_order_time = time.time()
+            self.total_slippage += order.slippage
+            self.total_commission += order.commission
             
-            # Detailed logging
-            trade_value = trade.quantity * fill_price
-            slippage_str = f"(slippage: ${slippage:+.2f})" if abs(slippage) > 0.1 else ""
+            # Log execution
+            slippage_str = f"(${total_slippage:+.2f})" if abs(total_slippage) > 0.1 else ""
+            logging.info(f"✅ Simulated order: {order.side.upper()} {order.quantity} BTC @ ${fill_price:,.2f} {slippage_str}")
             
-            logging.info(f"✅ Simulated BTC order: {trade.side.upper()} {trade.quantity} BTC @ ${fill_price:,.2f} ${slippage_str}")
-            
-            return trade
+            return order
             
         except Exception as e:
-            logging.error(f"Simulated order error: {e}")
-            trade.status = OrderStatus.FAILED
-            return trade
+            logging.error(f"Simulated execution error: {e}")
+            order.status = OrderStatus.FAILED
+            return order
     
-    def _update_holdings(self, trade: BTCTrade, fill_price: float):
-        """Update account holdings"""
-        trade_value = trade.quantity * fill_price
+    def _update_simulated_account(self, order: BTCOrder):
+        """Update simulated account balances"""
         
-        if trade.side == 'buy':
-            self.cash -= trade_value + trade.commission
-            self.btc_holdings += trade.quantity
+        if order.status != OrderStatus.FILLED:
+            return
+        
+        trade_value = order.quantity * order.fill_price
+        
+        if order.side == 'buy':
+            self.simulated_balance -= (trade_value + order.commission)
+            self.simulated_btc_holdings += order.quantity
         else:  # sell
-            self.cash += trade_value - trade.commission
-            self.btc_holdings -= trade.quantity
+            self.simulated_balance += (trade_value - order.commission)
+            self.simulated_btc_holdings -= order.quantity
         
-        # Ensure no negative holdings
-        self.btc_holdings = max(0, self.btc_holdings)
-        self.cash = max(0, self.cash)
+        # Ensure no negative balances
+        self.simulated_balance = max(0, self.simulated_balance)
+        self.simulated_btc_holdings = max(0, self.simulated_btc_holdings)
     
-    def close_position(self, current_price: float) -> Optional[BTCTrade]:
-        """Close current position if exists"""
-        open_position = self.position_tracker.close_position()
-        if not open_position:
+    def close_position(self, symbol: str, quantity: float, current_price: float) -> Optional[BTCOrder]:
+        """Close BTC position with market order"""
+        
+        if quantity <= 0:
             return None
         
-        # Determine close side
-        close_side = 'sell' if open_position.side == 'buy' else 'buy'
+        # Determine close side based on position
+        if self.simulated_btc_holdings > 0:
+            close_side = 'sell'
+            close_quantity = min(quantity, self.simulated_btc_holdings)
+        else:
+            # Short position (not typical for demo, but handled)
+            close_side = 'buy'
+            close_quantity = quantity
         
         # Place closing order
-        close_trade = self.place_order(
-            open_position.symbol,
-            close_side,
-            open_position.quantity,
-            current_price
-        )
+        close_order = self.place_order(symbol, close_side, close_quantity, current_price)
         
-        if close_trade.status == OrderStatus.FILLED:
-            # Calculate P&L
-            if open_position.side == 'buy':
-                pnl = (close_trade.fill_price - open_position.fill_price) * open_position.quantity
-            else:
-                pnl = (open_position.fill_price - close_trade.fill_price) * open_position.quantity
-            
-            # Account for commissions
-            pnl -= (open_position.commission + close_trade.commission)
-            
-            self.daily_pnl += pnl
-            
-            logging.info(f"Position closed: P&L ${pnl:+.2f}")
+        if close_order.status == OrderStatus.FILLED:
+            logging.info(f"Position closed: {close_side.upper()} {close_quantity} BTC @ ${close_order.fill_price:,.2f}")
         
-        return close_trade
+        return close_order
     
     def get_account_info(self) -> Dict:
-        """Get comprehensive account information"""
+        """Get account information"""
         
-        if self.api and self.connection_stable:
+        if self.alpaca_api:
             try:
-                account = self.api.get_account()
+                account = self.alpaca_api.get_account()
+                positions = self.alpaca_api.list_positions()
+                
+                # Get BTC position if exists
+                btc_position = None
+                for pos in positions:
+                    if pos.symbol == 'BTCUSD':
+                        btc_position = pos
+                        break
+                
                 return {
                     'balance': float(account.portfolio_value),
                     'cash': float(account.cash),
                     'buying_power': float(account.buying_power),
-                    'day_trade_count': int(account.daytrade_count),
-                    'account_blocked': account.account_blocked
+                    'btc_holdings': float(btc_position.qty) if btc_position else 0.0,
+                    'btc_market_value': float(btc_position.market_value) if btc_position else 0.0,
+                    'account_status': account.status,
+                    'connection_type': 'alpaca_live' if not self.paper_trading else 'alpaca_paper'
                 }
             except Exception as e:
                 logging.warning(f"Failed to get live account info: {e}")
         
-        # Calculate portfolio value
-        btc_value = self.btc_holdings * 43000  # Approximate BTC value
-        total_value = self.cash + btc_value
+        # Return simulated account info
+        btc_value = self.simulated_btc_holdings * 43000  # Approximate BTC value
+        total_value = self.simulated_balance + btc_value
         
         return {
             'balance': total_value,
-            'cash': self.cash,
-            'buying_power': self.cash,
-            'btc_holdings': self.btc_holdings,
-            'btc_value': btc_value,
-            'daily_pnl': self.daily_pnl,
-            'connection_stable': self.connection_stable
+            'cash': self.simulated_balance,
+            'buying_power': self.simulated_balance,
+            'btc_holdings': self.simulated_btc_holdings,
+            'btc_market_value': btc_value,
+            'account_status': 'simulated',
+            'connection_type': 'simulation'
         }
     
-    def get_position_info(self) -> Dict:
-        """Get current position information"""
-        
-        if self.api and self.connection_stable:
-            try:
-                positions = self.api.list_positions()
-                for pos in positions:
-                    if pos.symbol == 'BTCUSD':
-                        return {
-                            'has_position': True,
-                            'quantity': float(pos.qty),
-                            'side': 'long' if float(pos.qty) > 0 else 'short',
-                            'avg_price': float(pos.avg_cost),
-                            'market_value': float(pos.market_value),
-                            'unrealized_pnl': float(pos.unrealized_pnl)
-                        }
-            except Exception as e:
-                logging.warning(f"Failed to get live position info: {e}")
-        
-        # Return simulated position info
-        current_pos = self.position_tracker.current_position
-        if current_pos:
-            return {
-                'has_position': True,
-                'quantity': current_pos.quantity,
-                'side': 'long' if current_pos.side == 'buy' else 'short',
-                'avg_price': current_pos.fill_price or current_pos.price,
-                'market_value': current_pos.quantity * (current_pos.fill_price or current_pos.price),
-                'trade_id': current_pos.trade_id
-            }
-        
-        return {'has_position': False}
-    
-    def get_trading_stats(self) -> Dict:
-        """Get comprehensive trading statistics"""
+    def get_execution_stats(self) -> Dict:
+        """Get execution performance statistics"""
         
         success_rate = (self.successful_orders / max(1, self.total_orders)) * 100
         avg_slippage = self.total_slippage / max(1, self.successful_orders)
         avg_commission = self.total_commission / max(1, self.successful_orders)
+        avg_execution_time = np.mean(self.execution_times) if self.execution_times else 0
         
         return {
             'total_orders': self.total_orders,
@@ -496,87 +413,110 @@ class EnhancedBTCTradeExecutor:
             'total_slippage': self.total_slippage,
             'avg_commission': avg_commission,
             'total_commission': self.total_commission,
-            'daily_trades': self.position_tracker.daily_trades,
-            'daily_pnl': self.daily_pnl,
-            'connection_stable': self.connection_stable,
-            'mode': 'Paper' if self.paper_trading else 'Live'
+            'avg_execution_time': avg_execution_time,
+            'connection_type': 'alpaca' if self.alpaca_api else 'simulation'
         }
     
-    def get_risk_metrics(self) -> Dict:
-        """Get risk management metrics"""
+    def get_position_info(self) -> Dict:
+        """Get current position information"""
         
-        daily_risk_utilization = (abs(self.daily_pnl) / self.daily_loss_limit) * 100 if self.daily_pnl < 0 else 0
+        if self.alpaca_api:
+            try:
+                positions = self.alpaca_api.list_positions()
+                for pos in positions:
+                    if pos.symbol == 'BTCUSD':
+                        return {
+                            'has_position': True,
+                            'quantity': float(pos.qty),
+                            'side': 'long' if float(pos.qty) > 0 else 'short',
+                            'avg_price': float(pos.avg_cost),
+                            'market_value': float(pos.market_value),
+                            'unrealized_pnl': float(pos.unrealized_pnl),
+                            'symbol': pos.symbol
+                        }
+            except Exception as e:
+                logging.warning(f"Failed to get position info: {e}")
+        
+        # Return simulated position info
+        has_position = self.simulated_btc_holdings > 0.0001
         
         return {
-            'daily_pnl': self.daily_pnl,
-            'daily_loss_limit': self.daily_loss_limit,
-            'risk_utilization_pct': daily_risk_utilization,
-            'max_position_size': self.max_position_size,
-            'min_order_interval': self.min_order_interval,
-            'wash_trade_protection': True,
-            'circuit_breaker_active': daily_risk_utilization >= 100
+            'has_position': has_position,
+            'quantity': self.simulated_btc_holdings,
+            'side': 'long' if has_position else 'none',
+            'avg_price': 43000.0,  # Approximate
+            'market_value': self.simulated_btc_holdings * 43000,
+            'unrealized_pnl': 0.0,  # Simplified for demo
+            'symbol': 'BTCUSD'
         }
     
     def is_market_open(self) -> bool:
-        """Check if crypto market is open (always true for BTC)"""
-        
-        if self.api:
-            try:
-                # For crypto, check if we can get market data
-                return True  # Crypto markets are 24/7
-            except:
-                pass
-        
-        return True  # Crypto never closes
+        """Check if BTC market is open (always true for crypto)"""
+        return True  # Crypto markets are 24/7
     
-    def reset_daily_stats(self):
-        """Reset daily statistics"""
-        self.daily_pnl = 0.0
-        self.position_tracker.daily_trades = 0
-        logging.info("📊 Daily execution stats reset")
+    def cancel_order(self, order_id: str) -> bool:
+        """Cancel pending order"""
+        
+        if self.alpaca_api:
+            try:
+                self.alpaca_api.cancel_order(order_id)
+                logging.info(f"Order cancelled: {order_id}")
+                return True
+            except Exception as e:
+                logging.error(f"Failed to cancel order {order_id}: {e}")
+                return False
+        
+        # Simulated cancellation
+        if order_id in self.pending_orders:
+            del self.pending_orders[order_id]
+            return True
+        
+        return False
 
 
 if __name__ == "__main__":
-    # Test enhanced trade executor
-    import numpy as np
-    
+    # Test BTC trade executor
     config = {
         'paper_trading': True,
-        'initial_balance': 10000,
-        'max_position_size': 0.01,
-        'daily_loss_limit': 500
+        'api_key': 'YOUR_ALPACA_API_KEY',
+        'secret_key': 'YOUR_ALPACA_SECRET_KEY'
     }
     
-    executor = EnhancedBTCTradeExecutor(config)
+    executor = BTCTradeExecutor(config)
     
-    print("🧪 Testing Enhanced BTC Trade Executor...")
+    print("🧪 Testing BTC Trade Executor...")
     
     # Test buy order
-    buy_trade = executor.place_order("BTCUSD", "buy", 0.001, 43250.50)
-    print(f"Buy Trade: {buy_trade.side} {buy_trade.quantity} BTC @ ${buy_trade.price:,.2f}")
-    print(f"Status: {buy_trade.status.value}")
-    print(f"Fill Price: ${buy_trade.fill_price:,.2f}" if buy_trade.fill_price else "Not filled")
-    print(f"Slippage: ${buy_trade.slippage:.2f}")
-    
-    # Test position info
-    position = executor.get_position_info()
-    print(f"\nPosition: {position}")
+    buy_order = executor.place_order("BTCUSD", "buy", 0.001, 43250.50)
+    print(f"\nBuy Order Results:")
+    print(f"   Status: {buy_order.status.value}")
+    print(f"   Fill Price: ${buy_order.fill_price:,.2f}" if buy_order.fill_price else "   Not filled")
+    print(f"   Slippage: ${buy_order.slippage:.2f}")
+    print(f"   Commission: ${buy_order.commission:.2f}")
     
     # Test account info
     account = executor.get_account_info()
-    print(f"\nAccount: {account}")
+    print(f"\nAccount Information:")
+    print(f"   Balance: €{account['balance']:,.2f}")
+    print(f"   Cash: €{account['cash']:,.2f}")
+    print(f"   BTC Holdings: {account['btc_holdings']:.6f}")
+    print(f"   Connection: {account['connection_type']}")
     
-    # Test trading stats
-    stats = executor.get_trading_stats()
-    print(f"\nTrading Stats:")
-    for key, value in stats.items():
-        if isinstance(value, float):
-            print(f"   {key}: {value:.2f}")
-        else:
-            print(f"   {key}: {value}")
+    # Test execution statistics
+    stats = executor.get_execution_stats()
+    print(f"\nExecution Statistics:")
+    print(f"   Total Orders: {stats['total_orders']}")
+    print(f"   Success Rate: {stats['success_rate']:.1f}%")
+    print(f"   Avg Slippage: ${stats['avg_slippage']:.2f}")
+    print(f"   Avg Execution Time: {stats['avg_execution_time']:.3f}s")
     
-    # Test risk metrics
-    risk = executor.get_risk_metrics()
-    print(f"\nRisk Metrics: {risk}")
+    # Test position info
+    position = executor.get_position_info()
+    print(f"\nPosition Information:")
+    print(f"   Has Position: {position['has_position']}")
+    if position['has_position']:
+        print(f"   Side: {position['side']}")
+        print(f"   Quantity: {position['quantity']:.6f} BTC")
+        print(f"   Market Value: €{position['market_value']:,.2f}")
     
-    print("✅ Enhanced Trade Executor test completed")
+    print("\n✅ BTC Trade Executor test completed")
