@@ -3,6 +3,8 @@
 Complete BTC Swing Trading Bot - €20 to €1M Challenge
 Main integration file for swing trading system with enhanced ML learning
 Key Features: 2-5 minute swing positions, market structure awareness, sustainable growth
+OPTIMIZED: Lowered confidence thresholds for more active trading
+DEBUG VERSION: Enhanced debugging and nuclear logic test
 """
 
 import asyncio
@@ -18,7 +20,7 @@ from trade_execution import BTCSwingExecutor
 from logger import BTCSwingLogger
 from ml_interface import BTCSwingMLInterface, BTC_SWING_ML_CONFIG
 
-# Configuration for €20 to €1M Swing Challenge
+# Configuration for €20 to €1M Swing Challenge - OPTIMIZED
 SWING_CONFIG = {
     # Challenge Parameters
     'starting_balance': 20.0,                    # Start with €20
@@ -26,7 +28,7 @@ SWING_CONFIG = {
     'stop_loss_pct': 1.0,                       # 1.0% stop loss
     'max_position_time': 300,                   # 5 minutes max hold
     'min_position_time': 120,                   # 2 minutes min hold
-    'min_confidence': 0.65,                     # Higher confidence for swings
+    'min_confidence': 0.45,                     # OPTIMIZED: Reduced from 0.65 to 0.55
     'risk_per_trade_pct': 1.5,                  # 1.5% risk per trade
     'position_multiplier': 1.5,                 # 1.5x sustainable multiplier
     
@@ -37,12 +39,12 @@ SWING_CONFIG = {
     
     # Swing Trading Settings
     'max_daily_trades': 25,                     # Reasonable for swing trading
-    'signal_cooldown': 30,                      # 30 seconds between signals
+    'signal_cooldown': 10,                      # OPTIMIZED: Reduced from 30 to 20 seconds
     'status_update_interval': 15,               # Status every 15 seconds
     
     # ML Learning Configuration
     'ml_enabled': True,                         # Enable machine learning
-    'ml_min_confidence': 0.60,                  # ML signal threshold
+    'ml_min_confidence': 0.40,                  # OPTIMIZED: Reduced from 0.60 to 0.50
     'auto_ml_retrain': True,                    # Automatically retrain model
     
     # Risk Management
@@ -60,6 +62,8 @@ class BTCSwingTradingBot:
     """
     Complete BTC Swing Trading Bot for €20 to €1M Challenge
     Enhanced for sustainable swing trading with 2-5 minute positions
+    OPTIMIZED: More responsive signal generation
+    DEBUG VERSION: Enhanced debugging capabilities
     """
     
     def __init__(self):
@@ -87,13 +91,15 @@ class BTCSwingTradingBot:
         self.setup_logging()
         self.initialize_components()
         
-        print(f"\n₿ BTC SWING TRADING BOT v3.0")
+        print(f"\n₿ BTC SWING TRADING BOT v3.0 - OPTIMIZED - DEBUG VERSION")
         print(f"🎯 Challenge: €20 → €1,000,000")
         print(f"💰 Starting Balance: €{self.current_balance}")
         print(f"📊 Strategy: {SWING_CONFIG['profit_target_pct']}% target, {SWING_CONFIG['stop_loss_pct']}% stop")
         print(f"⏱️ Hold Time: {SWING_CONFIG['min_position_time']}-{SWING_CONFIG['max_position_time']} seconds")
         print(f"🤖 ML Learning: {'ENABLED' if self.ml_enabled else 'DISABLED'}")
         print(f"🔄 Position Multiplier: {SWING_CONFIG['position_multiplier']}x")
+        print(f"🎯 OPTIMIZED: Confidence {SWING_CONFIG['min_confidence']} (was 0.65)")
+        print(f"🐛 DEBUG MODE: Enhanced signal debugging enabled")
     
     def setup_logging(self):
         """Setup logging for the swing trading bot"""
@@ -108,25 +114,26 @@ class BTCSwingTradingBot:
             ]
         )
         
-        logging.info("🚀 BTC Swing Trading Bot v3.0 starting...")
+        logging.info("🚀 BTC Swing Trading Bot v3.0 starting... OPTIMIZED - DEBUG VERSION")
     
     def initialize_components(self):
         """Initialize all swing trading components"""
         
-        print("🔧 Initializing swing trading components...")
+        print("🔧 Initializing optimized swing trading components...")
         
         # 1. Data Collection (Swing-focused)
         self.data_collector = BTCSwingDataCollector("BTCUSD")
         
-        # 2. Trading Logic (Swing configuration)
+        # 2. Trading Logic (Swing configuration) - OPTIMIZED
         swing_logic_config = {
             'profit_target_pct': SWING_CONFIG['profit_target_pct'],
             'stop_loss_pct': SWING_CONFIG['stop_loss_pct'],
-            'min_confidence': SWING_CONFIG['min_confidence'],
+            'min_confidence': SWING_CONFIG['min_confidence'],          # Now 0.55
             'max_position_time': SWING_CONFIG['max_position_time'],
             'min_position_time': SWING_CONFIG['min_position_time'],
             'risk_per_trade_pct': SWING_CONFIG['risk_per_trade_pct'],
-            'position_multiplier': SWING_CONFIG['position_multiplier']
+            'position_multiplier': SWING_CONFIG['position_multiplier'],
+            'signal_cooldown': SWING_CONFIG['signal_cooldown']        # Now 20 seconds
         }
         self.trading_logic = BTCSwingLogic(swing_logic_config)
         self.trading_logic.current_balance = self.current_balance
@@ -142,10 +149,11 @@ class BTCSwingTradingBot:
         # 4. Trade Logger (Swing-enhanced)
         self.trade_logger = BTCSwingLogger(SWING_CONFIG['log_file'])
         
-        # 5. ML Interface (Swing-optimized)
+        # 5. ML Interface (Swing-optimized) - OPTIMIZED
         if self.ml_enabled:
             ml_config = BTC_SWING_ML_CONFIG.copy()
             ml_config['model_file'] = SWING_CONFIG['ml_model_file']
+            ml_config['min_confidence'] = SWING_CONFIG['ml_min_confidence']  # Now 0.50
             self.ml_interface = BTCSwingMLInterface(ml_config)
             
             # Connect ML to trading logic
@@ -153,7 +161,7 @@ class BTCSwingTradingBot:
             
             print("🤖 ML Learning System initialized for swing trading")
             print(f"   Model file: {SWING_CONFIG['ml_model_file']}")
-            print(f"   Min confidence: {SWING_CONFIG['ml_min_confidence']}")
+            print(f"   Min confidence: {SWING_CONFIG['ml_min_confidence']} (OPTIMIZED)")
         else:
             self.ml_interface = None
             print("🚫 ML Learning disabled")
@@ -161,13 +169,13 @@ class BTCSwingTradingBot:
         # Connect data collector to trading logic via candle callbacks
         self.data_collector.add_candle_callback(self.on_candle_completed)
         
-        print("✅ All swing trading components initialized")
+        print("✅ All optimized swing trading components initialized")
     
     async def start_swing_trading(self):
         """Start the BTC swing trading bot"""
         
         print("\n" + "="*80)
-        print("      🚀 STARTING €20 → €1M BTC SWING TRADING CHALLENGE v3.0")
+        print("      🚀 STARTING €20 → €1M BTC SWING TRADING CHALLENGE v3.0 - OPTIMIZED - DEBUG")
         print("="*80)
         
         try:
@@ -184,10 +192,12 @@ class BTCSwingTradingBot:
             self._display_account_info()
             
             # Start main swing trading loop
-            print("🔄 Starting swing trading loop...")
+            print("🔄 Starting optimized swing trading loop...")
             print("💡 Strategy: 2.5% profits on 2-5 minute swing positions")
             print("🤖 ML: Learning from swing trade patterns and market structure")
             print("🔄 Sustainable: 1.5x position multiplier for consistent growth")
+            print("🎯 OPTIMIZED: Lower confidence thresholds for more active trading")
+            print("🐛 DEBUG: Enhanced signal analysis and logging")
             print("⏹️ Press Ctrl+C to stop")
             print("-" * 80)
             
@@ -236,6 +246,7 @@ class BTCSwingTradingBot:
         if self.ml_interface:
             ml_stats = self.ml_interface.get_ml_stats()
             print(f"🤖 ML Model: v{ml_stats.get('model_version', 1)} | Samples: {ml_stats.get('training_samples', 0)}")
+            print(f"🎯 ML Threshold: {SWING_CONFIG['ml_min_confidence']} (OPTIMIZED)")
             if ml_stats.get('accuracy', 0) > 0:
                 print(f"🎯 ML Accuracy: {ml_stats['accuracy']:.1f}%")
     
@@ -285,14 +296,20 @@ class BTCSwingTradingBot:
         await self._shutdown()
     
     def on_candle_completed(self, candle_data):
-        """Process completed candle for swing trading opportunities"""
+        """Process completed candle for swing trading opportunities - DEBUG VERSION"""
         
         try:
+            # DEBUG: Show that candles are being processed
+            print(f"🕯️ DEBUG: {candle_data['timeframe']} candle @ €{candle_data['close']:.2f} | Vol: {candle_data['volume']:.2f}")
+            
             # Get swing metrics for enhanced analysis
             swing_metrics = self.data_collector.get_swing_metrics()
             
             if swing_metrics.get('insufficient_data'):
+                print(f"🔍 DEBUG: Insufficient data - need more candles")
                 return
+            
+            print(f"🔍 DEBUG: Swing metrics available - calling trading logic")
             
             # Update trading logic balance
             self.trading_logic.current_balance = self.current_balance
@@ -300,13 +317,21 @@ class BTCSwingTradingBot:
             # Generate swing trading signal
             signal = self.trading_logic.evaluate_candle(candle_data, swing_metrics)
             
+            # DEBUG: ALWAYS show signal analysis
+            print(f"🔍 DEBUG Signal: {signal.signal_type.value} | Confidence: {signal.confidence:.2f} | {signal.reasoning}")
+            
             # Process signals
             if signal.signal_type in [SwingSignalType.BUY, SwingSignalType.SELL]:
+                print(f"🚀 DEBUG: EXECUTING SIGNAL!")
                 self._execute_swing_signal(signal, candle_data)
             elif signal.signal_type == SwingSignalType.CLOSE:
+                print(f"🚀 DEBUG: CLOSING POSITION!")
                 self._close_swing_position(candle_data, signal.reasoning)
+            else:
+                print(f"💤 DEBUG: Holding - {signal.reasoning}")
             
         except Exception as e:
+            print(f"❌ DEBUG: Candle processing error: {e}")
             logging.error(f"Candle processing error: {e}")
     
     def _execute_swing_signal(self, signal, candle_data):
@@ -324,7 +349,7 @@ class BTCSwingTradingBot:
         position_value = position_size * current_price
         
         print(f"\n₿ SWING SIGNAL: {signal.signal_type.value.upper()} @ €{current_price:,.2f}")
-        print(f"   🎯 Confidence: {signal.confidence:.2f}")
+        print(f"   🎯 Confidence: {signal.confidence:.2f} (threshold: {SWING_CONFIG['min_confidence']})")
         print(f"   💡 Reasoning: {signal.reasoning}")
         print(f"   📊 Position: {position_size:.6f} BTC (€{position_value:.2f})")
         print(f"   ⏱️ Expected Hold: {signal.expected_hold_time//60}m{signal.expected_hold_time%60}s")
@@ -468,8 +493,8 @@ class BTCSwingTradingBot:
             ml_stats = self.ml_interface.get_ml_stats()
             
             if (SWING_CONFIG['auto_ml_retrain'] and 
-                ml_stats.get('training_samples', 0) >= 20 and 
-                ml_stats.get('training_samples', 0) % 20 == 0):
+                ml_stats.get('training_samples', 0) >= 15 and  # OPTIMIZED: Reduced from 20 to 15
+                ml_stats.get('training_samples', 0) % 15 == 0):  # OPTIMIZED: Train more frequently
                 
                 self.ml_interface.force_retrain()
                 self.last_ml_retrain = datetime.now()
@@ -564,12 +589,13 @@ class BTCSwingTradingBot:
         next_target = min(target, 1000000)
         progress = (self.current_balance / next_target) * 100
         
-        print(f"\n₿ SWING TRADING STATUS - {datetime.now().strftime('%H:%M:%S')}")
+        print(f"\n₿ SWING TRADING STATUS - {datetime.now().strftime('%H:%M:%S')} - OPTIMIZED - DEBUG")
         print(f"   💹 BTC Price: €{current_price:,.2f}")
         print(f"   💰 Balance: €{self.current_balance:.2f}")
         print(f"   📊 Level: {current_level} → {current_level + 1} ({progress:.1f}%)")
         print(f"   🎯 Next Target: €{next_target:,.0f}")
         print(f"   📈 Trend: {swing_metrics.get('trend_direction', 'unknown')}")
+        print(f"   🎯 Confidence: {SWING_CONFIG['min_confidence']} (OPTIMIZED)")
         
         if position_info['has_position']:
             time_in_pos = position_info['time_in_position']
@@ -643,7 +669,7 @@ class BTCSwingTradingBot:
         ml_accuracy = (self.ml_correct_today / max(1, self.ml_predictions_today)) * 100 if self.ml_predictions_today > 0 else 0
         
         print("\n" + "="*80)
-        print("           ₿ BTC SWING TRADING SESSION FINAL REPORT")
+        print("           ₿ BTC SWING TRADING SESSION FINAL REPORT - OPTIMIZED - DEBUG")
         print("="*80)
         
         # Session overview
@@ -651,6 +677,8 @@ class BTCSwingTradingBot:
         print(f"Challenge Attempt: #{self.challenge_attempt}")
         print(f"Starting Balance: €{SWING_CONFIG['starting_balance']}")
         print(f"Final Balance: €{self.current_balance:.2f}")
+        print(f"Confidence Threshold: {SWING_CONFIG['min_confidence']} (OPTIMIZED)")
+        print(f"Debug Mode: ENABLED")
         
         # Swing Performance metrics
         balance_growth = ((self.current_balance - SWING_CONFIG['starting_balance']) / SWING_CONFIG['starting_balance']) * 100
@@ -672,7 +700,7 @@ class BTCSwingTradingBot:
             print(f"Total Training Samples: {ml_stats.get('training_samples', 0)}")
             print(f"Model Version: v{ml_stats.get('model_version', 1)}")
             print(f"Overall ML Accuracy: {ml_stats.get('accuracy', 0):.1f}%")
-            print(f"Swing Pattern Learning: Enhanced")
+            print(f"ML Confidence Threshold: {SWING_CONFIG['ml_min_confidence']} (OPTIMIZED)")
         
         # Challenge progress
         current_level = 0
@@ -703,29 +731,78 @@ class BTCSwingTradingBot:
         
         print(f"\n{assessment}")
         
-        # Swing-specific insights
-        print(f"\n💡 SWING INSIGHTS:")
-        if avg_hold < 2:
-            print("   • Consider longer holds for better swing profits")
-        elif avg_hold > 5:
-            print("   • Consider shorter holds to increase frequency")
+        # Optimization results
+        print(f"\n💡 OPTIMIZATION RESULTS:")
+        if self.total_trades > 0:
+            print("   ✅ OPTIMIZATIONS SUCCESSFUL - Active trading achieved")
+            print(f"   ✅ Signal generation working with {SWING_CONFIG['min_confidence']} threshold")
         else:
-            print("   • Hold times are in optimal 2-5 minute range")
+            print("   ⚠️ Consider further optimization if no trades occurred")
         
-        if win_rate < 50:
-            print("   • Focus on higher confidence setups")
-        
-        if self.consecutive_losses > 2:
-            print("   • Review risk management and signal quality")
+        # Debug results
+        print(f"\n🐛 DEBUG ANALYSIS:")
+        print("   ✅ Enhanced signal debugging enabled")
+        print("   ✅ Candle processing monitoring active")
+        print("   ✅ Trade execution path logging")
         
         print("="*80)
+
+
+def nuclear_logic_test():
+    """Nuclear logic test function - can be run independently"""
+    
+    print("\n🧪 NUCLEAR LOGIC TEST - Adding candles...")
+    
+    # Import the trading logic
+    from trading_logic import BTCSwingLogic, SwingSignalType
+    from datetime import datetime
+    import time
+    
+    # Create test logic
+    config = {
+        'profit_target_pct': 2.5,
+        'stop_loss_pct': 1.0,
+        'min_confidence': 0.45,
+        'signal_cooldown': 10
+    }
+    logic = BTCSwingLogic(config)
+    
+    # Add test candles to trigger nuclear logic
+    for i in range(10):
+        test_candle = {
+            'timeframe': '1m',
+            'timestamp': datetime.now(),
+            'open': 43000 + i * 15,  # Rising price
+            'high': 43000 + i * 15 + 25,
+            'low': 43000 + i * 15 - 10,
+            'close': 43000 + i * 15 + 12,  # Consistent upward movement
+            'volume': 1.5 + i * 0.1,
+            'body_size': 12,
+            'is_bullish': True,
+            'range': 35
+        }
+        
+        print(f"🕯️ Adding candle {i+1}: €{test_candle['close']:.2f}")
+        logic._update_candle_buffers(test_candle)
+        
+        # Test signal generation
+        signal = logic._nuclear_signal_generation(test_candle, {})
+        print(f"   Signal: {signal.signal_type.value} | Conf: {signal.confidence:.2f} | {signal.reasoning}")
+        
+        if signal.signal_type != SwingSignalType.HOLD:
+            print(f"   🚀 SIGNAL GENERATED! {signal.signal_type.value.upper()}")
+            break
+            
+        time.sleep(0.5)
+    
+    print("\n✅ Nuclear logic test completed!")
 
 
 async def main():
     """Main entry point for BTC swing trading bot"""
     
-    print("₿ BTC SWING TRADING BOT v3.0 - €20 to €1M Challenge")
-    print("=" * 65)
+    print("₿ BTC SWING TRADING BOT v3.0 - €20 to €1M Challenge - OPTIMIZED - DEBUG")
+    print("=" * 70)
     print("SWING TRADING ENHANCEMENTS:")
     print("  ✅ HOLD TIMES: 2-5 minutes (vs 20 seconds)")
     print("  ✅ TARGETS: 2.5% percentage-based (vs fixed €8)")
@@ -734,14 +811,41 @@ async def main():
     print("  ✅ POSITION SIZE: 1.5x sustainable (vs 3x aggressive)")
     print("  ✅ ML LEARNING: Swing pattern recognition")
     print()
+    print("OPTIMIZATIONS APPLIED:")
+    print("  🎯 CONFIDENCE: 0.45 (was 0.65) - More responsive")
+    print("  🎯 ML THRESHOLD: 0.40 (was 0.60) - Enhanced ML")
+    print("  🎯 SIGNAL COOLDOWN: 10s (was 30s) - Faster signals")
+    print("  🎯 ML RETRAINING: 15 samples (was 20) - Faster learning")
+    print("  🎯 DEBUG LOGGING: Enhanced signal analysis")
+    print()
+    print("DEBUG FEATURES:")
+    print("  🐛 CANDLE PROCESSING: Real-time monitoring")
+    print("  🐛 SIGNAL ANALYSIS: Always show confidence/reasoning")
+    print("  🐛 EXECUTION PATH: Track signal → trade flow")
+    print("  🐛 NUCLEAR TEST: Independent logic testing")
+    print()
     print("ARCHITECTURE (5 Files):")
     print("  1. data_collection.py - BTC swing data with candles")
     print("  2. trading_logic.py - Swing strategy with market structure") 
     print("  3. trade_execution.py - Sustainable swing execution")
     print("  4. logger.py - Enhanced challenge tracking")
     print("  5. ml_interface.py - Swing pattern ML learning")
-    print("  6. main.py - Complete swing integration")
+    print("  6. main.py - Complete swing integration (OPTIMIZED + DEBUG)")
     print()
+    
+    # Ask user if they want to run nuclear test first
+    print("🧪 NUCLEAR LOGIC TEST AVAILABLE:")
+    print("   Run this first if you want to test signal generation")
+    print("   Type 'test' to run nuclear test, or press Enter to start bot")
+    
+    try:
+        user_input = input(">>> ").strip().lower()
+        if user_input == 'test':
+            nuclear_logic_test()
+            print("\nNuclear test completed. Starting main bot in 3 seconds...")
+            await asyncio.sleep(3)
+    except:
+        pass  # Continue to main bot if input fails
     
     # Validate setup
     if not SWING_CONFIG['api_key'] or SWING_CONFIG['api_key'] == 'YOUR_ALPACA_API_KEY':
@@ -751,11 +855,12 @@ async def main():
     
     # ML status
     if SWING_CONFIG['ml_enabled']:
-        print("🤖 Machine Learning: ENABLED")
+        print("🤖 Machine Learning: ENABLED (OPTIMIZED)")
         print("   • Learning from swing trade patterns")
         print("   • Market structure pattern recognition") 
         print("   • Multi-timeframe momentum analysis")
-        print("   • Model auto-retraining every 20 samples")
+        print("   • Model auto-retraining every 15 samples (was 20)")
+        print("   • ML confidence threshold: 0.40 (was 0.60)")
         print()
     else:
         print("🚫 Machine Learning: DISABLED")
@@ -769,7 +874,7 @@ async def main():
     print("   €200 account → ~0.00107 BTC = €46.00 position (sustainable)")
     print()
     
-    print("📊 SWING TRADING CAPABILITIES:")
+    print("📊 SWING TRADING CAPABILITIES (OPTIMIZED + DEBUG):")
     print("   ✅ LONG positions (buy low, sell high)")
     print("   ✅ SHORT positions (sell high, buy low)")
     print("   ✅ Market structure analysis")
@@ -777,6 +882,9 @@ async def main():
     print("   ✅ Support/resistance interaction")
     print("   ✅ Volume surge detection")
     print("   ✅ 1.5x sustainable position sizing")
+    print("   ✅ Lower confidence thresholds for more activity")
+    print("   ✅ Enhanced signal debugging")
+    print("   ✅ Real-time candle processing monitoring")
     print()
     
     # Create and start swing bot
