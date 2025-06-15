@@ -1,0 +1,18 @@
+{
+  "current_attempt": {
+    "start_time": "2025-06-15T16:21:24.060080",
+    "start_balance": 20.0,
+    "current_balance": 20.0,
+    "trades": [],
+    "peak_balance": 20.0,
+    "max_drawdown": 0.0,
+    "attempt_number": 1,
+    "total_hold_time": 0,
+    "avg_hold_time": 0,
+    "longest_hold": 0,
+    "shortest_hold": 999999
+  },
+  "attempts": [],
+  "last_updated": "2025-06-15T16:38:00.720624",
+  "swing_trading_mode": true
+}
