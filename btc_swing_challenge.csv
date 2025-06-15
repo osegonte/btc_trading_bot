@@ -1,0 +1,1 @@
+timestamp,symbol,side,quantity,price,order_id,status,trade_type,profit_loss,profit_loss_pct,commission,slippage,hold_time_seconds,hold_time_minutes,balance_after,challenge_level,attempt_number,swing_trade

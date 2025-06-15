@@ -1,0 +1,15 @@
+2025-06-15 11:42:44,515 - INFO - 🚀 BTC Swing Trading Bot v3.0 starting...
+2025-06-15 11:42:44,515 - INFO - ✅ BTC Swing Data Collector initialized for BTCUSD
+2025-06-15 11:42:44,515 - INFO - ✅ BTC Swing Logic initialized
+2025-06-15 11:42:44,515 - INFO -    🎯 Target: 2.5% | Stop: 1.0%
+2025-06-15 11:42:44,515 - INFO -    ⏱️ Hold time: 120-300s
+2025-06-15 11:42:44,515 - INFO -    💰 Starting balance: €20.0
+2025-06-15 11:42:44,515 - INFO -    🔄 Position multiplier: 1.5x
+2025-06-15 11:42:44,515 - INFO - 🎮 BTC Swing Executor in simulation mode
+2025-06-15 11:42:44,515 - INFO - Created new swing challenge CSV: btc_swing_challenge.csv
+2025-06-15 11:42:44,515 - INFO - ✅ BTC Swing Logger initialized - Challenge tracking active
+2025-06-15 11:42:44,515 - INFO - ✅ BTC Swing ML interface initialized
+2025-06-15 11:42:44,515 - INFO - 🤖 ML interface connected for swing trading enhancement
+2025-06-15 11:42:44,515 - INFO - 🚀 Starting BTC swing trading data feed...
+2025-06-15 11:42:44,515 - INFO - 🎮 Starting BTC swing simulation...
+2025-06-15 11:42:44,515 - INFO - 🎮 BTC swing simulation started at $43,000.00

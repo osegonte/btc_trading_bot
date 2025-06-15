@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-BTC Scalping Trading Logic - AGGRESSIVE 3X POSITION SIZE VERSION
-Purpose: Implement €20 to €1M scalping strategy with AGGRESSIVE position sizing for ML learning
-AGGRESSIVE FIX: 3x larger positions + enhanced auto-reset functionality
+BTC Swing Trading Logic - €20 to €1M Challenge
+Purpose: Implement swing scalping with 2-5 minute holds and market structure awareness
+Key Changes: Tick scalping → Swing scalping with percentage-based targets
 """
 
 import logging
@@ -13,510 +13,582 @@ from enum import Enum
 from collections import deque
 
 
-class SignalType(Enum):
+class SwingSignalType(Enum):
     BUY = "buy"
     SELL = "sell"
     HOLD = "hold"
     CLOSE = "close"
 
 
-class ScalpingSignal:
-    """Scalping signal for BTC trading"""
-    def __init__(self, signal_type: SignalType, confidence: float, reasoning: str, 
-                 entry_price: float = 0.0, target_price: float = 0.0, stop_price: float = 0.0):
+class SwingSignal:
+    """Enhanced swing trading signal"""
+    def __init__(self, signal_type: SwingSignalType, confidence: float, reasoning: str,
+                 entry_price: float = 0.0, target_price: float = 0.0, stop_price: float = 0.0,
+                 timeframe: str = "1m", expected_hold_time: int = 180):
         self.signal_type = signal_type
-        self.confidence = confidence  # 0.0 to 1.0
+        self.confidence = confidence
         self.reasoning = reasoning
         self.entry_price = entry_price
         self.target_price = target_price
         self.stop_price = stop_price
+        self.timeframe = timeframe
+        self.expected_hold_time = expected_hold_time  # seconds
         self.timestamp = datetime.now()
 
 
-class PositionManager:
-    """Manage current trading position for scalping"""
+class SwingPosition:
+    """Manage swing trading position"""
     def __init__(self):
-        self.side = None           # 'long', 'short', None
+        self.side = None  # 'long', 'short', None
         self.entry_price = None
         self.entry_time = None
         self.quantity = 0.0
         self.target_price = None
         self.stop_price = None
-        self.current_balance = 20.0  # Start with €20
+        self.trailing_stop = None
+        self.current_balance = 20.0
+        self.max_profit = 0.0  # Track peak profit for trailing
 
 
-class BTCScalpingLogic:
+class BTCSwingLogic:
     """
-    AGGRESSIVE BTC scalping logic with 3x position sizing for enhanced ML learning
-    Perfect for accelerated learning with high-impact trades
+    BTC Swing Trading Logic for €20 to €1M Challenge
+    Enhanced for 2-5 minute swing positions with market structure awareness
     """
     
     def __init__(self, config: Dict = None):
-        # €20 to €1M Challenge Configuration - AGGRESSIVE MODE
         config = config or {}
-        self.profit_target_euros = config.get('profit_target_euros', 8.0)    # €8 target (now on €24 positions!)
-        self.stop_loss_euros = config.get('stop_loss_euros', 4.0)           # €4 stop (now on €24 positions!)
-        self.min_confidence = config.get('min_confidence', 0.45)            # LOWERED for more opportunities
-        self.max_position_time = config.get('max_position_time', 20)        # 20 second scalps
-        self.risk_per_trade_pct = config.get('risk_per_trade_pct', 2.0)     # 2% risk per trade
+        
+        # Swing Trading Configuration
+        self.profit_target_pct = config.get('profit_target_pct', 2.5)  # 2.5% profit target
+        self.stop_loss_pct = config.get('stop_loss_pct', 1.0)          # 1.0% stop loss
+        self.min_confidence = config.get('min_confidence', 0.65)       # Higher confidence for swings
+        self.max_position_time = config.get('max_position_time', 300)  # 5 minutes max
+        self.min_position_time = config.get('min_position_time', 120)  # 2 minutes min
+        self.risk_per_trade_pct = config.get('risk_per_trade_pct', 1.5) # 1.5% risk per trade
+        self.position_multiplier = config.get('position_multiplier', 1.5) # 1.5x sustainable
         
         # Position management
-        self.position = PositionManager()
+        self.position = SwingPosition()
         
-        # ML Integration - track features for learning
-        self.ml_interface = None  # Will be set by main bot
+        # Challenge tracking with level system
+        self.current_balance = 20.0
+        self.challenge_level = 0
+        self.level_targets = self._generate_level_targets()
+        self.daily_loss_limit_pct = config.get('daily_loss_limit_pct', 10.0)
+        self.force_reset_balance = config.get('force_reset_balance', 5.0)
+        
+        # ML Interface
+        self.ml_interface = None
         self.current_trade_features = {}
-        self.learning_enabled = True
         
-        # Scalping metrics tracking
+        # Swing trading metrics
         self.trades_today = 0
         self.consecutive_losses = 0
         self.last_trade_time = None
-        self.min_trade_interval = 2.0  # REDUCED from 3s to 2s for more opportunities
+        self.signal_cooldown = 30  # 30 seconds between signals
         
-        # Technical analysis for scalping
-        self.price_buffer = deque(maxlen=30)  # Last 30 ticks for fast analysis
-        self.volume_buffer = deque(maxlen=30)
+        # Technical analysis for swings
+        self.candle_buffer_1m = deque(maxlen=50)
+        self.candle_buffer_3m = deque(maxlen=20)
         
-        # Performance tracking for €20 to €1M
-        self.session_start_balance = 20.0
-        self.current_balance = 20.0
+        # Performance tracking
         self.total_trades = 0
         self.winning_trades = 0
         self.daily_pnl = 0.0
+        self.session_start_balance = 20.0
         
-        # AGGRESSIVE MODE: Enhanced auto-reset system
-        self.reset_threshold = 5.0      # INCREASED from €3 to €5 (more forgiving)
-        self.max_reset_attempts = 10    # Allow up to 10 resets per session
-        self.reset_count = 0
-        self.last_reset_time = None
-        
-        # Scalping state management
-        self.last_signal_time = None
-        self.signal_cooldown = 0.5      # REDUCED from 1s to 0.5s for faster signals
-        
-        # ML Learning metrics
-        self.ml_predictions = 0
-        self.ml_correct = 0
-        self.ml_improvements = 0
-        
-        logging.info(f"✅ BTC Scalping Logic initialized - AGGRESSIVE 3X MODE")
-        logging.info(f"   🚀 AGGRESSIVE: 3x position sizes for enhanced ML learning")
-        logging.info(f"   Target: €{self.profit_target_euros} | Stop: €{self.stop_loss_euros}")
-        logging.info(f"   Starting balance: €{self.current_balance}")
-        logging.info(f"   Reset threshold: €{self.reset_threshold} (enhanced protection)")
+        logging.info(f"✅ BTC Swing Logic initialized")
+        logging.info(f"   🎯 Target: {self.profit_target_pct}% | Stop: {self.stop_loss_pct}%")
+        logging.info(f"   ⏱️ Hold time: {self.min_position_time}-{self.max_position_time}s")
+        logging.info(f"   💰 Starting balance: €{self.current_balance}")
+        logging.info(f"   🔄 Position multiplier: {self.position_multiplier}x")
+    
+    def _generate_level_targets(self) -> list:
+        """Generate €20 to €1M level targets"""
+        targets = []
+        current = 20.0
+        while current < 1000000:
+            current *= 2
+            targets.append(current)
+        return targets
     
     def set_ml_interface(self, ml_interface):
-        """Set ML interface for learning from trades"""
+        """Set ML interface for enhanced signal generation"""
         self.ml_interface = ml_interface
-        logging.info("🤖 ML interface connected - bot will now learn from aggressive trades")
+        logging.info("🤖 ML interface connected for swing trading enhancement")
     
     def can_trade(self) -> tuple[bool, str]:
-        """Check if trading is allowed based on aggressive scalping rules"""
+        """Check if swing trading is allowed"""
         
         # Check if already in position
         if self.position.side:
-            return False, f"Already in {self.position.side} position"
+            return False, f"Already in {self.position.side} swing position"
         
-        # AGGRESSIVE: Reduced minimum time between trades
+        # Check minimum time between trades
         if self.last_trade_time:
             time_since_last = (datetime.now() - self.last_trade_time).total_seconds()
-            if time_since_last < self.min_trade_interval:
-                return False, f"Too soon since last trade ({time_since_last:.1f}s)"
+            if time_since_last < self.signal_cooldown:
+                return False, f"Signal cooldown active ({time_since_last:.0f}s)"
         
-        # Check signal cooldown (reduced for aggressive mode)
-        if self.last_signal_time:
-            cooldown_time = (datetime.now() - self.last_signal_time).total_seconds()
-            if cooldown_time < self.signal_cooldown:
-                return False, "Signal cooldown active"
-        
-        # AGGRESSIVE: Reduced consecutive loss limit
-        if self.consecutive_losses >= 2:  # REDUCED from 3 to 2
+        # Check consecutive losses (swing trading should be more forgiving)
+        if self.consecutive_losses >= 3:
             return False, f"Too many consecutive losses: {self.consecutive_losses}"
         
-        # Check if we have enough balance to trade (with aggressive position sizes)
-        min_trade_size = 10.0  # INCREASED minimum for aggressive mode
-        if self.current_balance < min_trade_size:
-            return False, f"Insufficient balance: €{self.current_balance:.2f}"
+        # Check daily loss limit
+        daily_loss_limit = self.current_balance * (self.daily_loss_limit_pct / 100)
+        if self.daily_pnl < -daily_loss_limit:
+            return False, f"Daily loss limit reached: {self.daily_pnl:.2f}"
+        
+        # Check minimum balance for swing trading
+        min_swing_balance = 15.0
+        if self.current_balance < min_swing_balance:
+            return False, f"Insufficient balance for swing: €{self.current_balance:.2f}"
         
         return True, "OK"
     
-    def evaluate_tick(self, tick_data: Dict, market_metrics: Dict) -> ScalpingSignal:
+    def evaluate_candle(self, candle_data: Dict, swing_metrics: Dict) -> SwingSignal:
         """
-        AGGRESSIVE: Main evaluation method with enhanced signal generation
+        Main evaluation method for swing trading signals
+        Processes completed candles instead of individual ticks
         """
         
-        # Update internal buffers
-        self._update_buffers(tick_data)
+        # Update candle buffers
+        self._update_candle_buffers(candle_data)
         
         # Check exit conditions first if in position
         if self.position.side:
-            return self._check_exit_conditions(tick_data)
+            return self._check_swing_exit_conditions(candle_data, swing_metrics)
         
         # Check entry conditions if no position
         can_trade, reason = self.can_trade()
         if not can_trade:
-            return ScalpingSignal(SignalType.HOLD, 0.0, reason)
+            return SwingSignal(SwingSignalType.HOLD, 0.0, reason)
         
-        # AGGRESSIVE: Enhanced scalping entry analysis
-        return self._analyze_aggressive_scalping_entry(tick_data, market_metrics)
+        # Analyze swing entry opportunities
+        return self._analyze_swing_entry(candle_data, swing_metrics)
     
-    def _update_buffers(self, tick_data: Dict):
-        """Update price and volume buffers for analysis"""
-        self.price_buffer.append(tick_data['price'])
-        self.volume_buffer.append(tick_data['size'])
+    def _update_candle_buffers(self, candle_data: Dict):
+        """Update candle buffers for analysis"""
+        if candle_data['timeframe'] == '1m':
+            self.candle_buffer_1m.append(candle_data)
+        elif candle_data['timeframe'] == '3m':
+            self.candle_buffer_3m.append(candle_data)
     
-    def _calculate_position_size(self, current_price: float) -> float:
-        """
-        AGGRESSIVE 3X POSITION SIZE: Calculate larger positions for enhanced ML learning
-        """
+    def _analyze_swing_entry(self, candle_data: Dict, swing_metrics: Dict) -> SwingSignal:
+        """Analyze swing trading entry opportunities with market structure"""
         
-        # AGGRESSIVE MODE: 3x larger positions for all account sizes
-        if self.current_balance <= 30:
-            return 0.000558  # 3x AGGRESSIVE = €24 positions instead of €8! 🚀
-            
-        elif self.current_balance <= 60:
-            return 0.000837  # 3x of normal €12 = €36 positions
-            
-        elif self.current_balance <= 120:
-            return 0.001116  # 3x of normal €16 = €48 positions
-            
-        elif self.current_balance <= 250:
-            return 0.001395  # 3x of normal €20 = €60 positions
-            
-        elif self.current_balance <= 500:
-            return 0.001674  # 3x of normal €24 = €72 positions
-            
-        elif self.current_balance <= 1000:
-            return 0.002094  # 3x of normal €30 = €90 positions
-            
-        elif self.current_balance <= 2000:
-            return 0.002790  # 3x of normal €40 = €120 positions
-            
-        elif self.current_balance <= 5000:
-            return 0.004185  # 3x of normal €60 = €180 positions
-            
-        else:
-            # Very large accounts: Calculate dynamically but aggressively
-            risk_amount = self.current_balance * (self.risk_per_trade_pct / 100) * 3  # 3x multiplier
-            position_size = risk_amount / (self.stop_loss_euros * 2)
-            return min(round(position_size, 6), 0.015)  # Cap at 0.015 BTC for safety
+        if len(self.candle_buffer_1m) < 20:
+            return SwingSignal(SwingSignalType.HOLD, 0.0, "Insufficient candle data for swing analysis")
         
-        # Fallback safety
-        return 0.000558  # Aggressive default
-    
-    def _analyze_aggressive_scalping_entry(self, tick_data: Dict, market_metrics: Dict) -> ScalpingSignal:
-        """AGGRESSIVE: Enhanced scalping entry analysis with ML boost"""
+        current_price = candle_data['close']
+        timeframe = candle_data['timeframe']
         
-        if len(self.price_buffer) < 10:
-            return ScalpingSignal(SignalType.HOLD, 0.0, "Insufficient data for aggressive analysis")
+        # Only generate signals on 1m candle completions (3m for confirmation)
+        if timeframe != '1m':
+            return SwingSignal(SwingSignalType.HOLD, 0.0, "Waiting for 1m candle completion")
         
-        current_price = tick_data['price']
-        
-        # Get market metrics for scalping
-        momentum_fast = market_metrics.get('momentum_fast', 0)
-        momentum_medium = market_metrics.get('momentum_medium', 0)
-        volume_spike = market_metrics.get('volume_spike', False)
-        price_volatility = market_metrics.get('price_volatility', 0)
-        
-        # Calculate additional scalping indicators
-        indicators = self._calculate_scalping_indicators()
+        # Extract swing metrics
+        trend_direction = swing_metrics.get('trend_direction', 'neutral')
+        ma_alignment = swing_metrics.get('ma_alignment', {})
+        momentum_1m = swing_metrics.get('momentum_1m', 0)
+        momentum_3m = swing_metrics.get('momentum_3m', 0)
+        current_rsi = swing_metrics.get('current_rsi', 50)
+        atr = swing_metrics.get('atr', 0)
+        support_levels = swing_metrics.get('support_levels', [])
+        resistance_levels = swing_metrics.get('resistance_levels', [])
+        volume_surge = swing_metrics.get('volume_surge', False)
+        vwap_position = swing_metrics.get('vwap_position', 'neutral')
         
         # Store features for ML learning
         self.current_trade_features = {
-            'momentum_fast': momentum_fast,
-            'momentum_medium': momentum_medium,
-            'volume_spike': volume_spike,
-            'price_volatility': price_volatility,
             'current_price': current_price,
+            'trend_direction': trend_direction,
+            'ma_aligned': ma_alignment.get('aligned', False),
+            'ma_direction': ma_alignment.get('direction', 'neutral'),
+            'momentum_1m': momentum_1m,
+            'momentum_3m': momentum_3m,
+            'rsi': current_rsi,
+            'atr': atr,
+            'volume_surge': volume_surge,
+            'vwap_position': vwap_position,
             'balance': self.current_balance,
             'consecutive_losses': self.consecutive_losses,
-            'rsi_fast': indicators.get('rsi_fast', 50),
-            'bullish_breakout': indicators.get('bullish_breakout', False),
-            'bearish_breakdown': indicators.get('bearish_breakdown', False),
-            'volume_surge': indicators.get('volume_surge', False),
-            'micro_trend': indicators.get('micro_trend', 0),
-            'aggressive_mode': True,  # Flag for ML to know this is aggressive learning
+            'body_size': candle_data.get('body_size', 0),
+            'is_bullish_candle': candle_data.get('is_bullish', False),
+            'candle_range': candle_data.get('range', 0),
+            'near_support': self._near_level(current_price, support_levels),
+            'near_resistance': self._near_level(current_price, resistance_levels),
+            'swing_setup': True,
             'timestamp': datetime.now().isoformat()
         }
         
-        # Get ML prediction if available
+        # Get ML enhancement if available
         ml_signal = None
-        if self.ml_interface and self.learning_enabled:
+        if self.ml_interface:
             try:
-                ml_signal = self.ml_interface.process_tick(tick_data)
+                # Create tick-like data for ML compatibility
+                tick_like_data = {
+                    'price': current_price,
+                    'size': candle_data.get('volume', 1.0),
+                    'timestamp': datetime.now()
+                }
+                ml_signal = self.ml_interface.process_tick(tick_like_data)
                 if ml_signal.signal != 'hold':
-                    self.ml_predictions += 1
-                    logging.debug(f"🤖 AGGRESSIVE ML Signal: {ml_signal.signal} (conf: {ml_signal.confidence:.2f})")
+                    logging.debug(f"🤖 ML Swing Signal: {ml_signal.signal} (conf: {ml_signal.confidence:.2f})")
             except Exception as e:
                 logging.warning(f"ML processing error: {e}")
         
-        # AGGRESSIVE SIGNAL LOGIC - Enhanced with lower thresholds
-        signal_type = SignalType.HOLD
-        confidence = 0.0
-        reasoning = ""
-        
-        # Bullish scalping conditions - AGGRESSIVE thresholds
+        # SWING SIGNAL SCORING SYSTEM
         bullish_score = 0
         bearish_score = 0
         
-        # AGGRESSIVE: Lowered momentum thresholds for more signals
-        if momentum_fast > 0.0003:      # LOWERED from 0.0005
-            bullish_score += 3
-        elif momentum_fast > 0.0001:    # LOWERED from 0.0002
-            bullish_score += 1
-        elif momentum_fast < -0.0003:   # LOWERED from -0.0005
-            bearish_score += 3
-        elif momentum_fast < -0.0001:   # LOWERED from -0.0002
-            bearish_score += 1
+        # 1. Trend Direction (higher weight for swings)
+        if trend_direction == 'uptrend':
+            bullish_score += 4
+        elif trend_direction == 'downtrend':
+            bearish_score += 4
         
-        # Medium-term momentum confirmation
-        if momentum_medium > 0.0002:    # LOWERED from 0.0003
+        # 2. Moving Average Alignment
+        if ma_alignment.get('aligned', False):
+            if ma_alignment.get('direction') == 'bullish':
+                bullish_score += 3
+            elif ma_alignment.get('direction') == 'bearish':
+                bearish_score += 3
+        
+        # 3. Multi-timeframe Momentum Confirmation
+        if momentum_1m > 0.002 and momentum_3m > 0.001:  # Strong bullish momentum
+            bullish_score += 3
+        elif momentum_1m > 0.001:  # Moderate bullish momentum
             bullish_score += 2
-        elif momentum_medium < -0.0002: # LOWERED from -0.0003
+        elif momentum_1m < -0.002 and momentum_3m < -0.001:  # Strong bearish momentum
+            bearish_score += 3
+        elif momentum_1m < -0.001:  # Moderate bearish momentum
             bearish_score += 2
         
-        # Volume confirmation
-        if volume_spike:
-            if momentum_fast > 0:
+        # 4. RSI Conditions for Swing Trading (25-75 range)
+        if 25 < current_rsi < 50:
+            bullish_score += 2
+        elif 50 < current_rsi < 75:
+            bearish_score += 2
+        elif current_rsi < 25:  # Oversold - potential bounce
+            bullish_score += 3
+        elif current_rsi > 75:  # Overbought - potential drop
+            bearish_score += 3
+        
+        # 5. Support/Resistance Interaction
+        if self._near_level(current_price, support_levels, tolerance=0.005):
+            bullish_score += 2  # Bounce off support
+        if self._near_level(current_price, resistance_levels, tolerance=0.005):
+            bearish_score += 2  # Rejection at resistance
+        
+        # 6. Volume Confirmation
+        if volume_surge:
+            if momentum_1m > 0:
                 bullish_score += 2
-            elif momentum_fast < 0:
+            elif momentum_1m < 0:
                 bearish_score += 2
         
-        # RSI for scalping - AGGRESSIVE ranges
-        rsi = indicators.get('rsi_fast', 50)
-        if 25 < rsi < 50:       # WIDENED from 30-45
+        # 7. VWAP Position
+        if vwap_position == 'above' and momentum_1m > 0:
+            bullish_score += 1
+        elif vwap_position == 'below' and momentum_1m < 0:
+            bearish_score += 1
+        
+        # 8. Candle Pattern Analysis
+        candle_patterns = self._analyze_candle_patterns()
+        if candle_patterns.get('bullish_pattern'):
             bullish_score += 2
-        elif 50 < rsi < 75:     # WIDENED from 55-70
+        if candle_patterns.get('bearish_pattern'):
             bearish_score += 2
-        elif rsi < 20:          # LOWERED from 25
-            bullish_score += 4  # INCREASED from 3
-        elif rsi > 80:          # RAISED from 75
-            bearish_score += 4  # INCREASED from 3
         
-        # Price action patterns
-        if indicators.get('bullish_breakout', False):
-            bullish_score += 3
-        if indicators.get('bearish_breakdown', False):
-            bearish_score += 3
-        
-        # AGGRESSIVE: ML enhancement - bigger boost
+        # 9. ML Enhancement (significant boost for swings)
         if ml_signal:
-            if ml_signal.signal == 'buy' and ml_signal.confidence > 0.5:  # LOWERED from 0.6
-                bullish_score += 3  # INCREASED from 2
-                logging.debug("🤖 AGGRESSIVE ML boosting bullish signal")
-            elif ml_signal.signal == 'sell' and ml_signal.confidence > 0.5:  # LOWERED from 0.6
-                bearish_score += 3  # INCREASED from 2
-                logging.debug("🤖 AGGRESSIVE ML boosting bearish signal")
+            if ml_signal.signal == 'buy' and ml_signal.confidence > 0.6:
+                bullish_score += 3
+                logging.debug("🤖 ML enhancing bullish swing signal")
+            elif ml_signal.signal == 'sell' and ml_signal.confidence > 0.6:
+                bearish_score += 3
+                logging.debug("🤖 ML enhancing bearish swing signal")
         
-        # Volatility check - AGGRESSIVE ranges
-        if price_volatility < 0.00005:  # LOWERED from 0.0001
-            return ScalpingSignal(SignalType.HOLD, 0.0, "Market too quiet for aggressive scalping")
-        elif price_volatility > 0.03:   # RAISED from 0.02
-            return ScalpingSignal(SignalType.HOLD, 0.0, "Excessive volatility - too risky")
+        # Volatility check - ensure sufficient movement potential
+        if atr < 10:  # Too quiet for swing trading
+            return SwingSignal(SwingSignalType.HOLD, 0.0, "Insufficient volatility for swing trading")
+        elif atr > 200:  # Too volatile - risky
+            return SwingSignal(SwingSignalType.HOLD, 0.0, "Excessive volatility - too risky for swing")
         
-        # AGGRESSIVE: Signal generation with lowered thresholds
-        if bullish_score >= 2 and bullish_score > bearish_score:  # LOWERED from >= 2
-            signal_type = SignalType.BUY
-            confidence = min(0.95, 0.3 + (bullish_score / 6))  # LOWERED base from 0.4
-            reasoning = f"AGGRESSIVE Bullish scalp: Score {bullish_score}"
+        # Generate swing signal
+        signal_type = SwingSignalType.HOLD
+        confidence = 0.0
+        reasoning = ""
+        
+        # Require higher scores for swing trading (more selective)
+        if bullish_score >= 8 and bullish_score > bearish_score:
+            signal_type = SwingSignalType.BUY
+            confidence = min(0.95, 0.5 + (bullish_score / 20))
+            reasoning = f"Bullish swing setup: Score {bullish_score}"
             if ml_signal and ml_signal.signal == 'buy':
                 reasoning += f" + ML({ml_signal.confidence:.2f})"
-                confidence = min(0.95, confidence + 0.15)  # INCREASED ML boost
-            
-        elif bearish_score >= 2 and bearish_score > bullish_score:  # LOWERED from >= 2
-            signal_type = SignalType.SELL
-            confidence = min(0.95, 0.3 + (bearish_score / 6))  # LOWERED base from 0.4
-            reasoning = f"AGGRESSIVE Bearish scalp: Score {bearish_score}"
+                confidence = min(0.95, confidence + 0.1)
+        
+        elif bearish_score >= 8 and bearish_score > bullish_score:
+            signal_type = SwingSignalType.SELL
+            confidence = min(0.95, 0.5 + (bearish_score / 20))
+            reasoning = f"Bearish swing setup: Score {bearish_score}"
             if ml_signal and ml_signal.signal == 'sell':
                 reasoning += f" + ML({ml_signal.confidence:.2f})"
-                confidence = min(0.95, confidence + 0.15)  # INCREASED ML boost
+                confidence = min(0.95, confidence + 0.1)
         
         else:
             max_score = max(bullish_score, bearish_score)
-            confidence = max_score / 6  # LOWERED divisor
+            confidence = max_score / 20
             reasoning = f"Mixed signals: Bull {bullish_score}, Bear {bearish_score}"
         
-        # AGGRESSIVE: Apply lowered confidence filter
+        # Apply confidence filter
         if confidence < self.min_confidence:
-            return ScalpingSignal(SignalType.HOLD, confidence, f"Low confidence: {confidence:.2f}")
+            return SwingSignal(SwingSignalType.HOLD, confidence, 
+                             f"Low confidence for swing: {confidence:.2f}")
         
-        # AGGRESSIVE: Calculate position size and targets with 3x sizing
-        if signal_type in [SignalType.BUY, SignalType.SELL]:
+        # Calculate swing targets if signal generated
+        if signal_type in [SwingSignalType.BUY, SwingSignalType.SELL]:
             entry_price = current_price
             
-            # AGGRESSIVE: Use the 3x position size calculation
-            position_size = self._calculate_position_size(current_price)
-            
-            # Verify position size is reasonable for aggressive mode
-            position_value = position_size * current_price
-            logging.debug(f"💰 AGGRESSIVE Position calc: {position_size:.6f} BTC = €{position_value:.2f} for €{self.current_balance:.2f} account")
-            
-            # Calculate targets based on fixed euro amounts (now on 3x larger positions!)
-            if signal_type == SignalType.BUY:
-                target_price = entry_price + (self.profit_target_euros / position_size)
-                stop_price = entry_price - (self.stop_loss_euros / position_size)
+            # Calculate percentage-based targets
+            if signal_type == SwingSignalType.BUY:
+                target_price = entry_price * (1 + self.profit_target_pct / 100)
+                stop_price = entry_price * (1 - self.stop_loss_pct / 100)
             else:  # SELL
-                target_price = entry_price - (self.profit_target_euros / position_size)
-                stop_price = entry_price + (self.stop_loss_euros / position_size)
+                target_price = entry_price * (1 - self.profit_target_pct / 100)
+                stop_price = entry_price * (1 + self.stop_loss_pct / 100)
             
-            self.last_signal_time = datetime.now()
+            # Estimate hold time based on volatility and momentum
+            expected_hold = self._estimate_hold_time(atr, abs(momentum_1m))
             
-            return ScalpingSignal(
-                signal_type, confidence, reasoning, 
-                entry_price, target_price, stop_price
+            return SwingSignal(
+                signal_type, confidence, reasoning,
+                entry_price, target_price, stop_price,
+                timeframe='1m', expected_hold_time=expected_hold
             )
         
-        return ScalpingSignal(SignalType.HOLD, confidence, reasoning)
+        return SwingSignal(SwingSignalType.HOLD, confidence, reasoning)
     
-    def _calculate_scalping_indicators(self) -> Dict:
-        """Calculate fast indicators for scalping decisions"""
-        if len(self.price_buffer) < 10:
+    def _near_level(self, price: float, levels: list, tolerance: float = 0.003) -> bool:
+        """Check if price is near support/resistance level"""
+        for level in levels[:3]:  # Check top 3 levels
+            if abs(price - level) / level < tolerance:
+                return True
+        return False
+    
+    def _analyze_candle_patterns(self) -> Dict:
+        """Analyze recent candle patterns for swing signals"""
+        if len(self.candle_buffer_1m) < 3:
             return {}
         
-        prices = np.array(list(self.price_buffer))
-        volumes = np.array(list(self.volume_buffer))
+        recent_candles = list(self.candle_buffer_1m)[-3:]
         
-        indicators = {}
+        # Simple pattern recognition
+        patterns = {
+            'bullish_pattern': False,
+            'bearish_pattern': False
+        }
         
-        # Fast RSI (10 periods for scalping)
-        if len(prices) >= 11:
-            deltas = np.diff(prices[-11:])
-            gains = np.where(deltas > 0, deltas, 0)
-            losses = np.where(deltas < 0, -deltas, 0)
-            
-            avg_gain = np.mean(gains) if len(gains) > 0 else 0
-            avg_loss = np.mean(losses) if len(losses) > 0 else 0.001
-            
-            if avg_loss == 0:
-                indicators['rsi_fast'] = 100 if avg_gain > 0 else 50
-            else:
-                rs = avg_gain / avg_loss
-                indicators['rsi_fast'] = 100 - (100 / (1 + rs))
-        else:
-            indicators['rsi_fast'] = 50
+        # Three white soldiers / three black crows (simplified)
+        all_bullish = all(candle.get('is_bullish', False) for candle in recent_candles)
+        all_bearish = all(candle.get('is_bearish', False) for candle in recent_candles)
         
-        # AGGRESSIVE: Lowered breakout detection thresholds
-        if len(prices) >= 10:
-            recent_high = np.max(prices[-10:-1])
-            recent_low = np.min(prices[-10:-1])
-            current_price = prices[-1]
-            
-            indicators['bullish_breakout'] = current_price > recent_high * 1.0003  # LOWERED from 1.0005
-            indicators['bearish_breakdown'] = current_price < recent_low * 0.9997  # ADJUSTED accordingly
+        if all_bullish:
+            patterns['bullish_pattern'] = True
+        elif all_bearish:
+            patterns['bearish_pattern'] = True
         
-        # Volume surge detection
-        if len(volumes) >= 5:
-            recent_volume = volumes[-1]
-            avg_volume = np.mean(volumes[-5:-1])
-            indicators['volume_surge'] = recent_volume > avg_volume * 1.3  # LOWERED from 1.5
+        # Doji reversal (simplified)
+        latest = recent_candles[-1]
+        if latest.get('body_size', 0) < latest.get('range', 1) * 0.1:  # Small body
+            if len(recent_candles) >= 2:
+                prev = recent_candles[-2]
+                if prev.get('is_bullish') and latest.get('range') > prev.get('range', 0):
+                    patterns['bearish_pattern'] = True
+                elif prev.get('is_bearish') and latest.get('range') > prev.get('range', 0):
+                    patterns['bullish_pattern'] = True
         
-        # Micro trend detection
-        if len(prices) >= 5:
-            micro_trend = np.polyfit(range(5), prices[-5:], 1)[0]
-            indicators['micro_trend'] = micro_trend
-            indicators['micro_trend_bullish'] = micro_trend > 0.5  # LOWERED from 1.0
-            indicators['micro_trend_bearish'] = micro_trend < -0.5  # LOWERED from -1.0
-        
-        return indicators
+        return patterns
     
-    def _check_exit_conditions(self, tick_data: Dict) -> ScalpingSignal:
-        """Check exit conditions for current scalping position"""
+    def _estimate_hold_time(self, atr: float, momentum: float) -> int:
+        """Estimate expected hold time based on market conditions"""
+        base_time = 180  # 3 minutes base
+        
+        # Adjust based on volatility
+        if atr > 50:
+            base_time = 120  # Faster moves in volatile market
+        elif atr < 20:
+            base_time = 240  # Slower moves in quiet market
+        
+        # Adjust based on momentum
+        if momentum > 0.003:
+            base_time = max(120, base_time - 60)  # Strong momentum = faster
+        elif momentum < 0.001:
+            base_time = min(300, base_time + 60)  # Weak momentum = slower
+        
+        return base_time
+    
+    def _check_swing_exit_conditions(self, candle_data: Dict, swing_metrics: Dict) -> SwingSignal:
+        """Check exit conditions for current swing position"""
         
         if not self.position.side:
-            return ScalpingSignal(SignalType.HOLD, 0.0, "No position to exit")
+            return SwingSignal(SwingSignalType.HOLD, 0.0, "No position to exit")
         
-        current_price = tick_data['price']
+        current_price = candle_data['close']
         current_time = datetime.now()
         
-        # Calculate current P&L
+        # Calculate current P&L percentage
         if self.position.side == 'long':
-            pnl_ticks = current_price - self.position.entry_price
-        else:
-            pnl_ticks = self.position.entry_price - current_price
+            pnl_pct = ((current_price - self.position.entry_price) / self.position.entry_price) * 100
+        else:  # short
+            pnl_pct = ((self.position.entry_price - current_price) / self.position.entry_price) * 100
         
-        # Convert to euros
-        position_size = self.position.quantity
-        pnl_euros = pnl_ticks * position_size
-        
-        # Time-based exit (crucial for scalping)
+        # Time-based exits
         time_in_position = (current_time - self.position.entry_time).total_seconds()
+        
+        # Maximum time exit
         if time_in_position > self.max_position_time:
-            return ScalpingSignal(
-                SignalType.CLOSE, 1.0, 
-                f"Time exit: {time_in_position:.0f}s (max {self.max_position_time}s)"
+            return SwingSignal(
+                SwingSignalType.CLOSE, 1.0,
+                f"Max time exit: {time_in_position:.0f}s (max {self.max_position_time}s)"
             )
         
-        # AGGRESSIVE: Profit target hit (now much larger targets!)
-        if pnl_euros >= self.profit_target_euros:
-            return ScalpingSignal(
-                SignalType.CLOSE, 1.0, 
-                f"AGGRESSIVE Profit target hit: +€{pnl_euros:.2f}"
+        # Minimum time protection (avoid premature exits)
+        if time_in_position < self.min_position_time:
+            # Only allow exits for stop loss if within minimum time
+            if pnl_pct <= -self.stop_loss_pct:
+                return SwingSignal(
+                    SwingSignalType.CLOSE, 1.0,
+                    f"Stop loss hit early: {pnl_pct:.2f}%"
+                )
+            else:
+                return SwingSignal(
+                    SwingSignalType.HOLD, 0.0,
+                    f"Minimum hold time: {time_in_position:.0f}s/{self.min_position_time}s"
+                )
+        
+        # Profit target hit
+        if pnl_pct >= self.profit_target_pct:
+            return SwingSignal(
+                SwingSignalType.CLOSE, 1.0,
+                f"Profit target hit: +{pnl_pct:.2f}%"
             )
         
-        # AGGRESSIVE: Stop loss hit (now larger stops!)
-        if pnl_euros <= -self.stop_loss_euros:
-            return ScalpingSignal(
-                SignalType.CLOSE, 1.0, 
-                f"AGGRESSIVE Stop loss hit: -€{abs(pnl_euros):.2f}"
+        # Stop loss hit
+        if pnl_pct <= -self.stop_loss_pct:
+            return SwingSignal(
+                SwingSignalType.CLOSE, 1.0,
+                f"Stop loss hit: {pnl_pct:.2f}%"
             )
         
-        # AGGRESSIVE: Quick profit protection with lower threshold
-        if pnl_euros >= self.profit_target_euros * 0.5:  # LOWERED from 0.6
-            if len(self.price_buffer) >= 3:
-                recent_momentum = (self.price_buffer[-1] - self.price_buffer[-3]) / self.price_buffer[-3]
+        # Trailing stop logic
+        if pnl_pct > 0:
+            self.position.max_profit = max(self.position.max_profit, pnl_pct)
+            
+            # Activate trailing stop at 50% of target
+            if self.position.max_profit >= self.profit_target_pct * 0.5:
+                trailing_stop_pct = self.stop_loss_pct * 0.5  # Tighter trailing stop
                 
-                if self.position.side == 'long' and recent_momentum < 0.0001:  # LOWERED from 0.0002
-                    return ScalpingSignal(
-                        SignalType.CLOSE, 0.8, 
-                        f"AGGRESSIVE Momentum weakening: +€{pnl_euros:.2f}"
+                if self.position.max_profit - pnl_pct >= trailing_stop_pct:
+                    return SwingSignal(
+                        SwingSignalType.CLOSE, 0.9,
+                        f"Trailing stop: Peak {self.position.max_profit:.2f}%, Now {pnl_pct:.2f}%"
                     )
-                elif self.position.side == 'short' and recent_momentum > -0.0001:  # LOWERED from -0.0002
-                    return ScalpingSignal(
-                        SignalType.CLOSE, 0.8, 
-                        f"AGGRESSIVE Momentum weakening: +€{pnl_euros:.2f}"
-                    )
+        
+        # Market structure reversal
+        trend_direction = swing_metrics.get('trend_direction', 'neutral')
+        if self.position.side == 'long' and trend_direction == 'downtrend':
+            if pnl_pct < self.profit_target_pct * 0.3:  # Not enough profit to ignore
+                return SwingSignal(
+                    SwingSignalType.CLOSE, 0.7,
+                    f"Trend reversal against long position"
+                )
+        elif self.position.side == 'short' and trend_direction == 'uptrend':
+            if pnl_pct < self.profit_target_pct * 0.3:
+                return SwingSignal(
+                    SwingSignalType.CLOSE, 0.7,
+                    f"Trend reversal against short position"
+                )
+        
+        # RSI extreme reversal
+        current_rsi = swing_metrics.get('current_rsi', 50)
+        if self.position.side == 'long' and current_rsi > 80:
+            if pnl_pct > 0:  # Take profit in overbought
+                return SwingSignal(
+                    SwingSignalType.CLOSE, 0.6,
+                    f"RSI overbought exit: {current_rsi:.1f}"
+                )
+        elif self.position.side == 'short' and current_rsi < 20:
+            if pnl_pct > 0:  # Take profit in oversold
+                return SwingSignal(
+                    SwingSignalType.CLOSE, 0.6,
+                    f"RSI oversold exit: {current_rsi:.1f}"
+                )
         
         # Hold position
-        return ScalpingSignal(
-            SignalType.HOLD, 0.0, 
-            f"Holding: {pnl_euros:+.2f}€ ({time_in_position:.0f}s)"
+        return SwingSignal(
+            SwingSignalType.HOLD, 0.0,
+            f"Holding swing: {pnl_pct:+.2f}% ({time_in_position:.0f}s)"
         )
     
+    def _calculate_position_size(self, current_price: float) -> float:
+        """Calculate position size for swing trading with 1.5x multiplier"""
+        
+        # Risk amount (1.5% of balance with 1.5x multiplier)
+        risk_amount = self.current_balance * (self.risk_per_trade_pct / 100) * self.position_multiplier
+        
+        # Position size based on 1% stop loss
+        stop_distance_pct = self.stop_loss_pct / 100
+        position_value = risk_amount / stop_distance_pct
+        
+        # Convert to BTC quantity
+        position_size = position_value / current_price
+        
+        # Apply reasonable limits for swing trading
+        min_size = 0.0001  # Minimum 0.0001 BTC
+        max_size = 0.01    # Maximum 0.01 BTC per trade
+        
+        position_size = max(min_size, min(position_size, max_size))
+        
+        return round(position_size, 6)
+    
     def update_position(self, action: str, price: float, quantity: float, timestamp: str = None):
-        """AGGRESSIVE: Update position state with enhanced ML learning"""
+        """Update position state with swing trading enhancements"""
         
         if action in ['buy', 'sell']:
-            # Open new position
+            # Open new swing position
             self.position.side = 'long' if action == 'buy' else 'short'
             self.position.entry_price = price
             self.position.entry_time = datetime.fromisoformat(timestamp) if timestamp else datetime.now()
             self.position.quantity = quantity
+            self.position.max_profit = 0.0
             
-            # Calculate targets
+            # Calculate percentage-based targets
             if action == 'buy':
-                self.position.target_price = price + (self.profit_target_euros / quantity)
-                self.position.stop_price = price - (self.stop_loss_euros / quantity)
+                self.position.target_price = price * (1 + self.profit_target_pct / 100)
+                self.position.stop_price = price * (1 - self.stop_loss_pct / 100)
             else:
-                self.position.target_price = price - (self.profit_target_euros / quantity)
-                self.position.stop_price = price + (self.stop_loss_euros / quantity)
+                self.position.target_price = price * (1 - self.profit_target_pct / 100)
+                self.position.stop_price = price * (1 + self.stop_loss_pct / 100)
             
             self.last_trade_time = datetime.now()
             
-            # Verify aggressive position size
             position_value = quantity * price
-            logging.info(f"✅ AGGRESSIVE Position opened: {self.position.side.upper()} {quantity:.6f} BTC @ €{price:.2f} (€{position_value:.2f})")
+            logging.info(f"✅ Swing position opened: {self.position.side.upper()} {quantity:.6f} BTC @ €{price:.2f} (€{position_value:.2f})")
             
         elif action == 'close':
-            # Close position and update performance with aggressive ML learning
+            # Close swing position and update performance
             if self.position.side and self.position.entry_price:
                 # Calculate final P&L
                 if self.position.side == 'long':
-                    pnl_per_unit = price - self.position.entry_price
+                    pnl_pct = ((price - self.position.entry_price) / self.position.entry_price) * 100
                 else:
-                    pnl_per_unit = self.position.entry_price - price
+                    pnl_pct = ((self.position.entry_price - price) / self.position.entry_price) * 100
                 
-                total_pnl = pnl_per_unit * self.position.quantity
+                total_pnl = (pnl_pct / 100) * self.current_balance * (self.risk_per_trade_pct / 100) * self.position_multiplier / (self.stop_loss_pct / 100)
                 
                 # Update balance and tracking
                 self.current_balance += total_pnl
@@ -528,117 +600,101 @@ class BTCScalpingLogic:
                     self.winning_trades += 1
                     self.consecutive_losses = 0
                     outcome = 'profitable'
-                    # Check if ML predicted correctly
-                    if self.ml_predictions > 0:
-                        self.ml_correct += 1
-                        logging.debug("🤖 AGGRESSIVE ML prediction was correct!")
                 else:
                     self.consecutive_losses += 1
                     outcome = 'unprofitable'
                 
-                # AGGRESSIVE: Enhanced ML Learning
-                if self.ml_interface and self.learning_enabled and self.current_trade_features:
+                # ML Learning for swing trading
+                if self.ml_interface and self.current_trade_features:
                     try:
-                        # Add aggressive mode context to features
-                        self.current_trade_features['position_size_aggressive'] = self.position.quantity
-                        self.current_trade_features['pnl_magnitude'] = abs(total_pnl)
-                        self.current_trade_features['win'] = total_pnl > 0
+                        self.current_trade_features['hold_time'] = (datetime.now() - self.position.entry_time).total_seconds()
+                        self.current_trade_features['pnl_percentage'] = pnl_pct
+                        self.current_trade_features['max_profit_reached'] = self.position.max_profit
                         
                         self.ml_interface.record_trade_outcome(
-                            self.current_trade_features, 
-                            self.position.side, 
+                            self.current_trade_features,
+                            self.position.side,
                             total_pnl
                         )
-                        self.ml_improvements += 1
-                        logging.debug(f"🤖 AGGRESSIVE ML learned from trade: {outcome} (€{total_pnl:+.2f})")
+                        logging.debug(f"🤖 ML learned from swing trade: {outcome} ({pnl_pct:+.2f}%)")
                     except Exception as e:
-                        logging.warning(f"AGGRESSIVE ML learning error: {e}")
+                        logging.warning(f"ML learning error: {e}")
                 
-                logging.info(f"💰 AGGRESSIVE Position closed: {total_pnl:+.2f}€ | Balance: €{self.current_balance:.2f} | ML: {self.ml_improvements} learned")
+                hold_time = (datetime.now() - self.position.entry_time).total_seconds()
+                logging.info(f"💰 Swing position closed: {pnl_pct:+.2f}% (€{total_pnl:+.2f}) | Hold: {hold_time:.0f}s | Balance: €{self.current_balance:.2f}")
                 
-                # AGGRESSIVE: Check for auto-reset
-                if self._should_auto_reset():
-                    self._perform_auto_reset()
+                # Check level progression
+                self._check_level_progression()
+                
+                # Check if reset needed
+                if self.current_balance < self.force_reset_balance:
+                    self._reset_challenge()
             
-            # Reset position and trade features
-            self.position = PositionManager()
+            # Reset position
+            self.position = SwingPosition()
             self.position.current_balance = self.current_balance
             self.current_trade_features = {}
             self.last_trade_time = datetime.now()
     
-    def _should_auto_reset(self) -> bool:
-        """AGGRESSIVE: Enhanced auto-reset logic"""
-        # Check balance threshold
-        if self.current_balance < self.reset_threshold:
-            return True
+    def _check_level_progression(self):
+        """Check if reached next challenge level"""
+        current_level = 0
+        for i, target in enumerate(self.level_targets):
+            if self.current_balance >= target:
+                current_level = i + 1
+            else:
+                break
         
-        # Check if too many resets already
-        if self.reset_count >= self.max_reset_attempts:
-            logging.warning(f"⚠️ Maximum reset attempts reached: {self.reset_count}")
-            return False
-        
-        # Check minimum time between resets (prevent rapid resets)
-        if self.last_reset_time:
-            time_since_reset = (datetime.now() - self.last_reset_time).total_seconds()
-            if time_since_reset < 300:  # 5 minutes minimum between resets
-                return False
-        
-        return False
+        if current_level > self.challenge_level:
+            self.challenge_level = current_level
+            target_reached = self.level_targets[current_level - 1]
+            logging.info(f"🎉 SWING LEVEL {current_level} REACHED! €{target_reached:.0f}")
+            
+            if target_reached >= 1000000:
+                logging.info("🏆 SWING CHALLENGE COMPLETED! €1,000,000 REACHED!")
     
-    def _perform_auto_reset(self):
-        """AGGRESSIVE: Enhanced auto-reset with ML preservation"""
-        
-        self.reset_count += 1
-        self.last_reset_time = datetime.now()
-        
-        logging.info(f"🔄 AGGRESSIVE AUTO-RESET #{self.reset_count}")
+    def _reset_challenge(self):
+        """Reset challenge to €20 with enhanced tracking"""
+        logging.info(f"🔄 SWING CHALLENGE RESET")
         logging.info(f"   Previous balance: €{self.current_balance:.2f}")
+        logging.info(f"   Level reached: {self.challenge_level}")
         logging.info(f"   Trades completed: {self.total_trades}")
-        logging.info(f"   ML samples collected: {self.ml_improvements}")
         
-        # Preserve ML learning stats
-        ml_samples_preserved = self.ml_improvements
-        ml_accuracy = (self.ml_correct / max(1, self.ml_predictions)) * 100
-        
-        # Reset trading metrics but keep ML learning
+        # Reset financial metrics
         self.current_balance = 20.0
         self.session_start_balance = 20.0
+        self.challenge_level = 0
         self.total_trades = 0
         self.winning_trades = 0
         self.daily_pnl = 0.0
         self.consecutive_losses = 0
         self.trades_today = 0
         
-        # Keep ML stats for continuous learning
-        # self.ml_predictions, self.ml_correct, self.ml_improvements preserved
-        
         # Reset position
-        self.position = PositionManager()
+        self.position = SwingPosition()
         self.position.current_balance = 20.0
         
-        logging.info(f"✅ AGGRESSIVE Reset #{self.reset_count} complete")
-        logging.info(f"   New balance: €20.00")
-        logging.info(f"   ML samples preserved: {ml_samples_preserved}")
-        logging.info(f"   ML accuracy retained: {ml_accuracy:.1f}%")
-        logging.info("🤖 Aggressive ML learning continues...")
+        logging.info("✅ Swing challenge reset to €20")
     
     def get_position_info(self) -> Dict:
-        """Get current position information with aggressive mode stats"""
+        """Get current swing position information"""
         if not self.position.side:
-            ml_accuracy = (self.ml_correct / max(1, self.ml_predictions)) * 100
             return {
                 'has_position': False,
                 'balance': self.current_balance,
                 'trades_today': self.trades_today,
                 'consecutive_losses': self.consecutive_losses,
-                'ml_predictions': self.ml_predictions,
-                'ml_accuracy': ml_accuracy,
-                'ml_improvements': self.ml_improvements,
-                'aggressive_mode': True,
-                'reset_count': self.reset_count
+                'challenge_level': self.challenge_level,
+                'swing_mode': True
             }
         
         time_in_position = (datetime.now() - self.position.entry_time).total_seconds()
+        current_price = self.position.entry_price  # Simplified - would use real current price
+        
+        if self.position.side == 'long':
+            pnl_pct = ((current_price - self.position.entry_price) / self.position.entry_price) * 100
+        else:
+            pnl_pct = ((self.position.entry_price - current_price) / self.position.entry_price) * 100
         
         return {
             'has_position': True,
@@ -649,27 +705,26 @@ class BTCScalpingLogic:
             'stop_price': self.position.stop_price,
             'time_in_position': time_in_position,
             'entry_time': self.position.entry_time.isoformat(),
+            'current_pnl_pct': pnl_pct,
+            'max_profit': self.position.max_profit,
             'balance': self.current_balance,
-            'trades_today': self.trades_today,
-            'aggressive_mode': True,
-            'reset_count': self.reset_count
+            'challenge_level': self.challenge_level,
+            'swing_mode': True
         }
     
-    def get_scalping_performance(self) -> Dict:
-        """Get performance metrics including aggressive mode and ML learning stats"""
+    def get_swing_performance(self) -> Dict:
+        """Get comprehensive swing trading performance metrics"""
         
         win_rate = (self.winning_trades / max(1, self.total_trades)) * 100
         balance_growth = ((self.current_balance - self.session_start_balance) / self.session_start_balance) * 100
-        ml_accuracy = (self.ml_correct / max(1, self.ml_predictions)) * 100
         
-        # Calculate level in €20 to €1M challenge
-        current_level = 0
-        level_target = 20.0
-        while level_target <= self.current_balance and level_target < 1000000:
-            current_level += 1
-            level_target *= 2
+        # Calculate next target
+        next_target = 1000000
+        for target in self.level_targets:
+            if self.current_balance < target:
+                next_target = target
+                break
         
-        next_target = level_target if level_target <= 1000000 else 1000000
         progress_to_next = (self.current_balance / next_target) * 100
         
         return {
@@ -683,216 +738,150 @@ class BTCScalpingLogic:
             'daily_pnl': self.daily_pnl,
             'consecutive_losses': self.consecutive_losses,
             
-            # €20 to €1M Challenge specific
-            'challenge_level': current_level,
+            # Challenge specific metrics
+            'challenge_level': self.challenge_level,
             'next_target': next_target,
             'progress_to_next_pct': progress_to_next,
             'distance_to_million': 1000000 - self.current_balance,
             
-            # AGGRESSIVE MODE metrics
-            'aggressive_mode': True,
-            'reset_count': self.reset_count,
-            'max_reset_attempts': self.max_reset_attempts,
-            'reset_threshold': self.reset_threshold,
-            'last_reset_time': self.last_reset_time.isoformat() if self.last_reset_time else None,
-            
-            # ML Learning metrics
-            'ml_predictions': self.ml_predictions,
-            'ml_correct': self.ml_correct,
-            'ml_accuracy': ml_accuracy,
-            'ml_improvements': self.ml_improvements,
-            'learning_enabled': self.learning_enabled,
-            
-            # Risk metrics
-            'risk_per_trade_euros': self.current_balance * (self.risk_per_trade_pct / 100),
-            'max_daily_loss': self.current_balance * 0.1,
-            'aggressive_position_multiplier': 3.0
+            # Swing trading specific
+            'profit_target_pct': self.profit_target_pct,
+            'stop_loss_pct': self.stop_loss_pct,
+            'position_multiplier': self.position_multiplier,
+            'min_hold_time': self.min_position_time,
+            'max_hold_time': self.max_position_time,
+            'trading_mode': 'swing_scalping'
         }
     
-    def reset_to_twenty_euros(self):
-        """Reset balance to €20 for new challenge attempt (manual reset)"""
-        
-        logging.info(f"🔄 Manual reset of €20 to €1M challenge")
-        logging.info(f"   Previous balance: €{self.current_balance:.2f}")
-        logging.info(f"   Total resets: {self.reset_count}")
-        logging.info(f"   Trades completed: {self.total_trades}")
-        logging.info(f"   Win rate: {(self.winning_trades / max(1, self.total_trades)) * 100:.1f}%")
-        logging.info(f"   ML accuracy: {(self.ml_correct / max(1, self.ml_predictions)) * 100:.1f}%")
-        
-        # Perform reset (will increment reset_count)
-        self._perform_auto_reset()
-    
-    def should_reset_challenge(self) -> bool:
-        """Check if challenge should be reset (enhanced for aggressive mode)"""
-        return self._should_auto_reset()
-    
     def get_risk_metrics(self) -> Dict:
-        """Get current risk metrics for aggressive mode monitoring"""
+        """Get risk management metrics for swing trading"""
         
-        # Calculate maximum position size based on current balance (3x aggressive)
-        max_risk_per_trade = self.current_balance * (self.risk_per_trade_pct / 100)
-        max_position_size = self._calculate_position_size(43000)  # Sample price
-        max_position_value = max_position_size * 43000
-        
-        # Daily loss limit
-        daily_loss_limit = self.current_balance * 0.1
+        max_risk_per_trade = self.current_balance * (self.risk_per_trade_pct / 100) * self.position_multiplier
+        daily_loss_limit = self.current_balance * (self.daily_loss_limit_pct / 100)
         daily_risk_utilization = (abs(self.daily_pnl) / daily_loss_limit) * 100 if self.daily_pnl < 0 else 0
         
         return {
             'current_balance': self.current_balance,
             'risk_per_trade_euros': max_risk_per_trade,
-            'max_position_size': max_position_size,
-            'max_position_value': max_position_value,
+            'risk_per_trade_pct': self.risk_per_trade_pct,
+            'position_multiplier': self.position_multiplier,
             'daily_loss_limit': daily_loss_limit,
             'daily_pnl': self.daily_pnl,
             'daily_risk_utilization_pct': daily_risk_utilization,
             'consecutive_losses': self.consecutive_losses,
-            'should_reset': self.should_reset_challenge(),
-            'trades_until_rest': max(0, 10 - (self.trades_today % 10)),
-            'ml_learning_active': self.learning_enabled and self.ml_interface is not None,
-            
-            # AGGRESSIVE MODE specific
-            'aggressive_mode': True,
-            'position_size_multiplier': 3.0,
-            'reset_count': self.reset_count,
-            'resets_remaining': max(0, self.max_reset_attempts - self.reset_count),
-            'reset_threshold': self.reset_threshold,
-            'auto_reset_enabled': True
+            'force_reset_threshold': self.force_reset_balance,
+            'should_reset': self.current_balance < self.force_reset_balance,
+            'profit_target_pct': self.profit_target_pct,
+            'stop_loss_pct': self.stop_loss_pct,
+            'min_confidence': self.min_confidence,
+            'signal_cooldown': self.signal_cooldown,
+            'swing_trading_mode': True
         }
     
-    def toggle_ml_learning(self, enabled: bool = None):
-        """Toggle ML learning on/off"""
-        if enabled is None:
-            self.learning_enabled = not self.learning_enabled
-        else:
-            self.learning_enabled = enabled
-        
-        status = "enabled" if self.learning_enabled else "disabled"
-        logging.info(f"🤖 AGGRESSIVE ML learning {status}")
-        return self.learning_enabled
+    def reset_to_twenty_euros(self):
+        """Manual reset to €20 for new attempt"""
+        self._reset_challenge()
     
-    def get_ml_insights(self) -> Dict:
-        """Get ML learning insights and feature importance for aggressive mode"""
-        if not self.ml_interface:
-            return {'ml_available': False}
-        
-        try:
-            ml_stats = self.ml_interface.get_ml_stats()
-            feature_analysis = self.ml_interface.get_feature_analysis()
-            
-            return {
-                'ml_available': True,
-                'learning_enabled': self.learning_enabled,
-                'predictions_made': self.ml_predictions,
-                'predictions_correct': self.ml_correct,
-                'accuracy': (self.ml_correct / max(1, self.ml_predictions)) * 100,
-                'improvements_made': self.ml_improvements,
-                'model_stats': ml_stats,
-                'top_features': feature_analysis.get('feature_importance', {}),
-                'model_version': ml_stats.get('model_version', 1),
-                'training_samples': ml_stats.get('training_samples', 0),
-                
-                # AGGRESSIVE MODE ML insights
-                'aggressive_mode': True,
-                'aggressive_learning_active': True,
-                'reset_learning_preserved': self.reset_count > 0,
-                'total_resets': self.reset_count,
-                'samples_per_reset': self.ml_improvements / max(1, self.reset_count + 1)
-            }
-        except Exception as e:
-            logging.error(f"Error getting aggressive ML insights: {e}")
-            return {'ml_available': True, 'error': str(e)}
-    
-    def get_aggressive_status(self) -> Dict:
-        """Get comprehensive aggressive mode status"""
-        
-        performance = self.get_scalping_performance()
-        risk_metrics = self.get_risk_metrics()
-        ml_insights = self.get_ml_insights()
-        
-        return {
-            'mode': 'AGGRESSIVE_3X',
-            'position_multiplier': 3.0,
-            'status': 'ACTIVE',
-            'balance': self.current_balance,
-            'reset_count': self.reset_count,
-            'ml_samples': self.ml_improvements,
-            'win_rate': performance['win_rate'],
-            'ml_accuracy': ml_insights.get('accuracy', 0),
-            'next_reset_at': f"€{self.reset_threshold}",
-            'resets_remaining': risk_metrics['resets_remaining'],
-            'learning_acceleration': 'HIGH' if self.ml_improvements > 10 else 'NORMAL'
-        }
+    def should_reset_challenge(self) -> bool:
+        """Check if challenge should be reset"""
+        return self.current_balance < self.force_reset_balance
 
 
 if __name__ == "__main__":
-    # Test AGGRESSIVE BTC scalping logic with 3x position sizing
+    # Test BTC swing trading logic
     config = {
-        'profit_target_euros': 8.0,
-        'stop_loss_euros': 4.0,
-        'min_confidence': 0.45,  # Lowered for aggressive mode
-        'max_position_time': 20
+        'profit_target_pct': 2.5,
+        'stop_loss_pct': 1.0,
+        'min_confidence': 0.65,
+        'max_position_time': 300,
+        'min_position_time': 120,
+        'position_multiplier': 1.5
     }
     
-    logic = BTCScalpingLogic(config)
+    logic = BTCSwingLogic(config)
     
-    print("🧪 Testing AGGRESSIVE 3X BTC Scalping Logic...")
+    print("🧪 Testing BTC Swing Trading Logic...")
     
-    # Test aggressive position size calculation
-    test_prices = [43000, 43250, 42800]
-    test_balances = [20, 30, 50, 100, 200, 500, 1000]
+    # Test position size calculation
+    test_prices = [43000, 50000, 40000]
+    test_balances = [20, 40, 80, 160, 320, 640]
     
-    print("\n💰 AGGRESSIVE 3X POSITION SIZE VERIFICATION:")
-    print("=" * 70)
+    print("\n💰 SWING POSITION SIZE CALCULATION:")
+    print("=" * 60)
     
     for balance in test_balances:
         logic.current_balance = balance
-        pos_size = logic._calculate_position_size(test_prices[0])
-        pos_value = pos_size * test_prices[0]
-        percentage = (pos_value / balance) * 100
-        
-        # Compare to normal size (1x)
-        normal_size = pos_size / 3  # What normal would be
-        normal_value = normal_size * test_prices[0]
-        
-        print(f"   €{balance:4.0f} account → {pos_size:.6f} BTC = €{pos_value:6.2f} ({percentage:4.1f}%) [3x of €{normal_value:.2f}] 🚀")
+        for price in test_prices[:1]:  # Test with first price
+            pos_size = logic._calculate_position_size(price)
+            pos_value = pos_size * price
+            risk_amount = balance * (logic.risk_per_trade_pct / 100) * logic.position_multiplier
+            
+            print(f"   €{balance:3.0f} account → {pos_size:.6f} BTC = €{pos_value:6.2f} | Risk: €{risk_amount:5.2f}")
     
-    # Reset to €20 for detailed testing
+    # Test swing performance metrics
+    print(f"\n📊 SWING PERFORMANCE METRICS:")
+    print("=" * 50)
+    
     logic.current_balance = 20.0
+    performance = logic.get_swing_performance()
+    risk_metrics = logic.get_risk_metrics()
     
-    print(f"\n🎯 DETAILED €20 AGGRESSIVE ACCOUNT TEST:")
+    for key, value in performance.items():
+        if isinstance(value, (int, float)):
+            print(f"   {key}: {value}")
+    
+    print(f"\n⚖️ SWING RISK METRICS:")
+    for key, value in risk_metrics.items():
+        if isinstance(value, (int, float, bool)):
+            print(f"   {key}: {value}")
+    
+    # Test mock swing signal generation
+    print(f"\n🎯 MOCK SWING SIGNAL TEST:")
+    print("=" * 40)
+    
+    mock_candle = {
+        'timeframe': '1m',
+        'timestamp': datetime.now(),
+        'open': 43000,
+        'high': 43050,
+        'low': 42980,
+        'close': 43030,
+        'volume': 1.5,
+        'body_size': 30,
+        'is_bullish': True,
+        'range': 70
+    }
+    
+    mock_metrics = {
+        'trend_direction': 'uptrend',
+        'ma_alignment': {'aligned': True, 'direction': 'bullish'},
+        'momentum_1m': 0.003,
+        'momentum_3m': 0.002,
+        'current_rsi': 45,
+        'atr': 25,
+        'support_levels': [42900, 42800],
+        'resistance_levels': [43100, 43200],
+        'volume_surge': True,
+        'vwap_position': 'above'
+    }
+    
+    signal = logic._analyze_swing_entry(mock_candle, mock_metrics)
+    
+    print(f"Signal Type: {signal.signal_type.value}")
+    print(f"Confidence: {signal.confidence:.2f}")
+    print(f"Reasoning: {signal.reasoning}")
+    if signal.signal_type != SwingSignalType.HOLD:
+        print(f"Entry: €{signal.entry_price:.2f}")
+        print(f"Target: €{signal.target_price:.2f} ({signal.profit_target_pct:.1f}%)")
+        print(f"Stop: €{signal.stop_price:.2f} ({signal.stop_loss_pct:.1f}%)")
+        print(f"Expected Hold: {signal.expected_hold_time}s")
+    
+    print("\n✅ BTC SWING TRADING LOGIC READY!")
     print("=" * 50)
-    
-    pos_20 = logic._calculate_position_size(43000)
-    val_20 = pos_20 * 43000
-    
-    print(f"Account Balance: €20.00")
-    print(f"AGGRESSIVE Position Size: {pos_20:.6f} BTC (3x normal)")
-    print(f"AGGRESSIVE Position Value: €{val_20:.2f} (3x normal)")
-    print(f"Account %: {(val_20/20)*100:.1f}%")
-    
-    # Verify aggressive profit calculation
-    expected_profit_12_move = pos_20 * 12  # €12 BTC price move for €8 profit on 3x position
-    print(f"\nProfit if BTC moves €12: €{expected_profit_12_move:.2f}")
-    print(f"Target profit: €8.00")
-    print(f"Math correct: {'YES ✅' if abs(expected_profit_12_move - 8.0) < 1.0 else 'NO ❌'}")
-    
-    # Test aggressive status
-    status = logic.get_aggressive_status()
-    print(f"\n🚀 AGGRESSIVE MODE STATUS:")
-    print("=" * 50)
-    for key, value in status.items():
-        print(f"   {key}: {value}")
-    
-    print(f"\n✅ AGGRESSIVE 3X VERSION READY!")
-    print("=" * 60)
-    print("✅ Position sizing: 3X AGGRESSIVE (€24 vs €8 positions)")
-    print("✅ ML learning: ENHANCED for high-impact trades")
-    print("✅ Auto-reset: SMART (€5 threshold, 10 attempts max)")
-    print("✅ Signal generation: LOWERED thresholds for more trades")
-    print("✅ Risk management: ENHANCED with reset protection")
-    print("")
-    print("🚀 Ready for AGGRESSIVE €20 challenge with 3X learning!")
-    print("   This will generate much clearer ML learning signals")
-    print("   Expected: €0.20-€0.50 profits vs €0.01-€0.02 before")
-    print("   Replace your trading_logic.py with this file and restart!")
+    print("✅ Percentage-based targets: 2.5% profit, 1% stop")
+    print("✅ Hold times: 2-5 minutes")
+    print("✅ Market structure awareness")
+    print("✅ Multi-timeframe confirmation")
+    print("✅ Enhanced risk management")
+    print("✅ ML learning integration")
+    print("✅ €20 to €1M challenge tracking")
