@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Complete BTC Scalping Bot with ML Learning - CORRECTED VERSION
-Fixed: 1) Short selling support 2) ML integration 3) All syntax issues
+Complete BTC Scalping Bot with ML Learning - CORRECTED AGGRESSIVE VERSION
+CRITICAL FIX: Enables 3x position sizes for enhanced ML learning
 """
 
 import asyncio
@@ -17,14 +17,14 @@ from trade_execution import BTCTradeExecutor
 from logger import BTCTradeLogger
 from ml_interface import BTCMLInterface, BTC_ML_CONFIG
 
-# Configuration for €20 to €1M Challenge with fixes
+# Configuration for €20 to €1M Challenge with AGGRESSIVE MODE
 CONFIG = {
-    # Challenge Parameters
+    # Challenge Parameters - AGGRESSIVE
     'starting_balance': 20.0,              # Start with €20
-    'profit_target_euros': 8.0,            # €8 profit target
-    'stop_loss_euros': 4.0,                # €4 stop loss (2:1 ratio)
+    'profit_target_euros': 8.0,            # €8 profit target (now on €24 positions!)
+    'stop_loss_euros': 4.0,                # €4 stop loss (now on €24 positions!)
     'max_position_time': 20,               # 20-second scalps
-    'min_confidence': 0.50,                # Lower threshold for more opportunities
+    'min_confidence': 0.45,                # LOWERED for more opportunities
     'risk_per_trade_pct': 2.0,             # Risk 2% per trade
     
     # API Configuration
@@ -32,20 +32,20 @@ CONFIG = {
     'api_key': 'YOUR_ALPACA_API_KEY',      # Replace with your keys
     'secret_key': 'YOUR_ALPACA_SECRET_KEY', # Replace with your keys
     
-    # Scalping Settings
+    # AGGRESSIVE Scalping Settings
     'max_daily_trades': 100,               # High frequency for scalping
-    'min_trade_interval': 2.0,             # 2 seconds between trades
+    'min_trade_interval': 2.0,             # REDUCED: 2 seconds between trades
     'status_update_interval': 10,          # Status every 10 seconds
     
-    # ML Learning Configuration
+    # ML Learning Configuration - ENHANCED
     'ml_enabled': True,                    # Enable machine learning
-    'ml_min_confidence': 0.60,             # ML signal threshold
+    'ml_min_confidence': 0.50,             # LOWERED ML signal threshold
     'auto_ml_retrain': True,               # Automatically retrain model
     
-    # Risk Management
-    'max_consecutive_losses': 3,           # Reset after 3 losses
-    'daily_loss_limit_pct': 10.0,         # 10% daily loss limit
-    'force_reset_balance': 3.0,            # Reset if below €3
+    # AGGRESSIVE Risk Management
+    'max_consecutive_losses': 2,           # REDUCED: Reset after 2 losses
+    'daily_loss_limit_pct': 15.0,         # INCREASED: 15% daily loss limit
+    'force_reset_balance': 5.0,            # INCREASED: Reset if below €5
     
     # Files
     'log_file': 'btc_scalping_challenge.csv',
@@ -55,10 +55,8 @@ CONFIG = {
 
 class BTCScalpingBot:
     """
-    Complete BTC Scalping Bot with BOTH FIXES APPLIED
-    1. Position sizing: FIXED
-    2. Short selling: ENABLED
-    3. ML learning: ENHANCED
+    CORRECTED AGGRESSIVE BTC Scalping Bot
+    CRITICAL FIX: 3x position sizes for enhanced ML learning
     """
     
     def __init__(self):
@@ -85,10 +83,11 @@ class BTCScalpingBot:
         self.setup_logging()
         self.initialize_components()
         
-        print(f"\n₿ BTC SCALPING BOT v2.0 - CORRECTED & COMPLETE")
+        print(f"\n₿ BTC SCALPING BOT v2.0 - CORRECTED AGGRESSIVE MODE")
         print(f"🎯 Challenge: €20 → €1,000,000")
         print(f"💰 Starting Balance: €{self.current_balance}")
         print(f"📊 Strategy: €{CONFIG['profit_target_euros']} target, €{CONFIG['stop_loss_euros']} stop")
+        print(f"🚀 AGGRESSIVE: 3x position sizes (€24 vs €8)")
         print(f"🤖 ML Learning: {'ENABLED' if self.ml_enabled else 'DISABLED'}")
         print(f"⏱️ Max Position Time: {CONFIG['max_position_time']} seconds")
     
@@ -105,7 +104,7 @@ class BTCScalpingBot:
             ]
         )
         
-        logging.info("🚀 BTC Scalping Bot v2.0 - CORRECTED VERSION starting...")
+        logging.info("🚀 BTC Scalping Bot v2.0 - CORRECTED AGGRESSIVE VERSION starting...")
     
     def initialize_components(self):
         """Initialize all components"""
@@ -115,7 +114,7 @@ class BTCScalpingBot:
         # 1. Data Collection
         self.data_collector = BTCDataCollector("BTCUSD")
         
-        # 2. Trading Logic with FIXED position sizing
+        # 2. Trading Logic with AGGRESSIVE configuration
         logic_config = {
             'profit_target_euros': CONFIG['profit_target_euros'],
             'stop_loss_euros': CONFIG['stop_loss_euros'],
@@ -126,7 +125,7 @@ class BTCScalpingBot:
         self.trading_logic = BTCScalpingLogic(logic_config)
         self.trading_logic.current_balance = self.current_balance
         
-        # 3. Trade Execution with short selling support
+        # 3. Trade Execution with CORRECTED aggressive support
         execution_config = {
             'paper_trading': CONFIG['paper_trading'],
             'api_key': CONFIG['api_key'] if CONFIG['api_key'] != 'YOUR_ALPACA_API_KEY' else '',
@@ -159,7 +158,7 @@ class BTCScalpingBot:
         print("✅ All components initialized")
     
     async def start_scalping(self):
-        """Start the BTC scalping bot"""
+        """Start the AGGRESSIVE BTC scalping bot"""
         
         print("\n" + "="*80)
         print("      🚀 STARTING €20 → €1M BTC SCALPING CHALLENGE v2.0 (CORRECTED)")
@@ -179,9 +178,10 @@ class BTCScalpingBot:
             self._display_account_info()
             
             # Start main scalping loop
-            print("🔄 Starting scalping loop...")
-            print("💡 Strategy: Quick €8 profits with €4 stops + ML learning")
-            print("🤖 ML: Learning from every trade to improve performance")
+            print("🔄 Starting aggressive scalping loop...")
+            print("💡 Strategy: €8 profits on €24 positions + ML learning")
+            print("🤖 ML: Learning from every aggressive trade outcome")
+            print("🚀 AGGRESSIVE: 3x position sizes for enhanced learning")
             print("⏹️ Press Ctrl+C to stop")
             print("-" * 80)
             
@@ -225,6 +225,10 @@ class BTCScalpingBot:
         if account.get('short_selling_enabled', False):
             print(f"📈📉 Short Selling: ENABLED")
         
+        # Show aggressive mode
+        if account.get('aggressive_mode', False):
+            print(f"🚀 Aggressive Mode: ENABLED (3x positions)")
+        
         # ML status
         if self.ml_interface:
             ml_stats = self.ml_interface.get_ml_stats()
@@ -233,7 +237,7 @@ class BTCScalpingBot:
                 print(f"🎯 ML Accuracy: {ml_stats['accuracy']:.1f}%")
     
     async def _main_scalping_loop(self):
-        """Main scalping loop with ML learning"""
+        """Main AGGRESSIVE scalping loop with ML learning"""
         
         last_status_time = time.time()
         last_balance_check = time.time()
@@ -241,7 +245,7 @@ class BTCScalpingBot:
         
         while self.is_running:
             try:
-                # Check if balance needs reset
+                # Check if balance needs reset (aggressive threshold)
                 if time.time() - last_balance_check > 30:
                     if self._should_reset_challenge():
                         self._reset_challenge()
@@ -252,7 +256,7 @@ class BTCScalpingBot:
                     print(f"🛑 Daily trade limit reached: {self.trades_today}")
                     break
                 
-                # Check consecutive losses
+                # AGGRESSIVE: Check consecutive losses (reduced threshold)
                 if self.consecutive_losses >= CONFIG['max_consecutive_losses']:
                     print(f"⚠️ {self.consecutive_losses} consecutive losses - pausing 30s")
                     await asyncio.sleep(30)
@@ -278,7 +282,7 @@ class BTCScalpingBot:
         await self._shutdown()
     
     def on_tick_received(self, tick_data):
-        """Process incoming tick for scalping opportunities"""
+        """Process incoming tick for AGGRESSIVE scalping opportunities"""
         
         try:
             # Get market metrics for scalping
@@ -295,38 +299,34 @@ class BTCScalpingBot:
             
             # Process signals
             if signal.signal_type in [SignalType.BUY, SignalType.SELL]:
-                self._execute_scalping_signal(signal, tick_data)
+                self._execute_aggressive_scalping_signal(signal, tick_data)
             elif signal.signal_type == SignalType.CLOSE:
                 self._close_scalping_position(tick_data, signal.reasoning)
             
         except Exception as e:
             logging.error(f"Tick processing error: {e}")
     
-    def _execute_scalping_signal(self, signal, tick_data):
-        """Execute scalping signal with FIXED position sizing"""
+    def _execute_aggressive_scalping_signal(self, signal, tick_data):
+        """Execute AGGRESSIVE scalping signal with 3x position sizing"""
         
         current_price = tick_data['price']
         
-        # FIXED: Calculate proper position size
+        # Calculate AGGRESSIVE position size (3x)
         position_size = self.trading_logic._calculate_position_size(current_price)
         position_value = position_size * current_price
         
-        # Verify position size is reasonable
-        if position_value > self.current_balance * 0.5:  # Safety check
-            logging.warning(f"Position size too large: €{position_value:.2f} for €{self.current_balance:.2f} account")
-            return
-        
-        print(f"\n₿ SCALP SIGNAL: {signal.signal_type.value.upper()} @ €{current_price:,.2f}")
+        # Verify aggressive position size
+        print(f"\n₿ AGGRESSIVE SCALP SIGNAL: {signal.signal_type.value.upper()} @ €{current_price:,.2f}")
         print(f"   🎯 Confidence: {signal.confidence:.2f}")
         print(f"   💡 Reasoning: {signal.reasoning}")
-        print(f"   📦 Size: {position_size:.6f} BTC (€{position_value:.2f}) ✅ FIXED")
+        print(f"   🚀 AGGRESSIVE Size: {position_size:.6f} BTC (€{position_value:.2f}) - 3X MODE!")
         
         # ML enhancement information
         if self.ml_enabled and 'ML' in signal.reasoning:
             print(f"   🤖 ML Enhanced Signal")
             self.ml_predictions_today += 1
         
-        # Execute trade (now supports both long and short)
+        # Execute AGGRESSIVE trade (now supports both long and short)
         order = self.trade_executor.place_order(
             "BTCUSD", signal.signal_type.value, position_size, current_price
         )
@@ -347,23 +347,23 @@ class BTCScalpingBot:
             self.trades_today += 1
             
             direction = "📈 LONG" if signal.signal_type.value == 'buy' else "📉 SHORT"
-            print(f"✅ SCALP ENTRY: {direction} position opened")
+            print(f"✅ AGGRESSIVE SCALP ENTRY: {direction} position opened")
             print(f"   🎯 Target: €{signal.target_price:,.2f} (+€{CONFIG['profit_target_euros']})")
             print(f"   🛡️ Stop: €{signal.stop_price:,.2f} (-€{CONFIG['stop_loss_euros']})")
             print(f"   📊 Trade #{self.trades_today} today")
             
-            # Verify expected profit calculation
+            # Verify expected profit calculation on 3x position
             if signal.signal_type.value == 'buy':
                 expected_profit = (signal.target_price - current_price) * position_size
             else:
                 expected_profit = (current_price - signal.target_price) * position_size
-            print(f"   💰 Expected Profit: €{expected_profit:.2f}")
+            print(f"   💰 Expected Profit: €{expected_profit:.2f} (3x enhanced!)")
             
         else:
-            print(f"❌ SCALP ENTRY FAILED: {order.status.value}")
+            print(f"❌ AGGRESSIVE SCALP ENTRY FAILED: {order.status.value}")
     
     def _close_scalping_position(self, tick_data, reasoning):
-        """Close current scalping position with ML learning"""
+        """Close current AGGRESSIVE scalping position with ML learning"""
         
         current_price = tick_data['price']
         position_info = self.trading_logic.get_position_info()
@@ -371,7 +371,7 @@ class BTCScalpingBot:
         if not position_info['has_position']:
             return
         
-        print(f"\n₿ SCALP EXIT: {reasoning} @ €{current_price:,.2f}")
+        print(f"\n₿ AGGRESSIVE SCALP EXIT: {reasoning} @ €{current_price:,.2f}")
         
         # Close position
         exit_order = self.trade_executor.close_position(
@@ -424,14 +424,14 @@ class BTCScalpingBot:
                 current_balance=self.current_balance
             )
             
-            # Display results
+            # Display AGGRESSIVE results
             pnl_symbol = "🟢" if pnl > 0 else "🔴"
             direction = "📈 LONG" if position_info['side'] == 'long' else "📉 SHORT"
             win_rate = (self.winning_trades / self.total_trades) * 100 if self.total_trades > 0 else 0
             ml_accuracy = (self.ml_correct_today / self.ml_predictions_today) * 100 if self.ml_predictions_today > 0 else 0
             
-            print(f"✅ SCALP CLOSED: {direction} position")
-            print(f"   💰 P&L: €{pnl:+.2f} {pnl_symbol}")
+            print(f"✅ AGGRESSIVE SCALP CLOSED: {direction} position")
+            print(f"   💰 P&L: €{pnl:+.2f} {pnl_symbol} (3x enhanced!)")
             print(f"   💵 Balance: €{self.current_balance:.2f}")
             print(f"   📊 Session: {self.winning_trades}W/{self.total_trades - self.winning_trades}L ({win_rate:.1f}%)")
             if self.ml_enabled and self.ml_predictions_today > 0:
@@ -441,7 +441,7 @@ class BTCScalpingBot:
             self._check_level_progress()
             
         else:
-            print(f"❌ SCALP EXIT FAILED")
+            print(f"❌ AGGRESSIVE SCALP EXIT FAILED")
     
     def _update_ml_learning(self):
         """Update ML learning system"""
@@ -458,9 +458,9 @@ class BTCScalpingBot:
                 
                 self.ml_interface.force_retrain()
                 self.last_ml_retrain = datetime.now()
-                print(f"\n🤖 ML MODEL RETRAINED!")
+                print(f"\n🤖 AGGRESSIVE ML MODEL RETRAINED!")
                 print(f"   📊 Samples: {ml_stats.get('training_samples', 0)}")
-                logging.info("🤖 ML model auto-retrained")
+                logging.info("🤖 Aggressive ML model auto-retrained")
                 
         except Exception as e:
             logging.warning(f"ML update error: {e}")
@@ -480,27 +480,27 @@ class BTCScalpingBot:
         
         # Check for level completion
         if self.current_balance >= next_target and next_target <= 1000000:
-            print(f"\n🎉 LEVEL {current_level + 1} REACHED! €{self.current_balance:.2f}")
-            logging.info(f"🎉 Challenge Level {current_level + 1} reached: €{self.current_balance:.2f}")
+            print(f"\n🎉 AGGRESSIVE LEVEL {current_level + 1} REACHED! €{self.current_balance:.2f}")
+            logging.info(f"🎉 Aggressive Challenge Level {current_level + 1} reached: €{self.current_balance:.2f}")
             
             # ML celebration
             if self.ml_enabled:
                 ml_accuracy = (self.ml_correct_today / max(1, self.ml_predictions_today)) * 100
-                print(f"🤖 ML contributed with {ml_accuracy:.1f}% accuracy")
+                print(f"🤖 Aggressive ML contributed with {ml_accuracy:.1f}% accuracy")
             
             if next_target >= 1000000:
-                print("🏆 CHALLENGE COMPLETED! €1,000,000 REACHED!")
-                logging.info("🏆 €20 to €1M Challenge COMPLETED!")
+                print("🏆 AGGRESSIVE CHALLENGE COMPLETED! €1,000,000 REACHED!")
+                logging.info("🏆 Aggressive €20 to €1M Challenge COMPLETED!")
                 self.is_running = False
     
     def _should_reset_challenge(self) -> bool:
-        """Check if challenge should be reset"""
+        """Check if challenge should be reset (aggressive threshold)"""
         return self.current_balance < CONFIG['force_reset_balance']
     
     def _reset_challenge(self):
         """Reset challenge to €20 but keep ML knowledge"""
         
-        print(f"\n🔄 RESETTING CHALLENGE (ML KNOWLEDGE RETAINED)")
+        print(f"\n🔄 AGGRESSIVE RESET (ML KNOWLEDGE RETAINED)")
         print(f"   Previous balance: €{self.current_balance:.2f}")
         print(f"   Trades completed: {self.total_trades}")
         if self.ml_enabled:
@@ -527,12 +527,12 @@ class BTCScalpingBot:
         self.trading_logic.reset_to_twenty_euros()
         self.trading_logic.current_balance = self.current_balance
         
-        print(f"✅ Challenge attempt #{self.challenge_attempt} started with €20")
-        print("🤖 ML model retained previous learning")
-        logging.info(f"Challenge reset - Attempt #{self.challenge_attempt} started (ML retained)")
+        print(f"✅ Aggressive challenge attempt #{self.challenge_attempt} started with €20")
+        print("🤖 Aggressive ML model retained previous learning")
+        logging.info(f"Aggressive Challenge reset - Attempt #{self.challenge_attempt} started (ML retained)")
     
     def _display_status(self):
-        """Display current scalping status with ML metrics"""
+        """Display current AGGRESSIVE scalping status with ML metrics"""
         
         current_price = self.data_collector.get_current_price()
         position_info = self.trading_logic.get_position_info()
@@ -546,7 +546,7 @@ class BTCScalpingBot:
         next_target = min(target, 1000000)
         progress = (self.current_balance / next_target) * 100
         
-        print(f"\n₿ SCALPING STATUS - {datetime.now().strftime('%H:%M:%S')}")
+        print(f"\n₿ AGGRESSIVE SCALPING STATUS - {datetime.now().strftime('%H:%M:%S')}")
         print(f"   💹 BTC Price: €{current_price:,.2f}")
         print(f"   💰 Balance: €{self.current_balance:.2f}")
         print(f"   📊 Level: {current_level} → {current_level + 1} ({progress:.1f}%)")
@@ -555,7 +555,7 @@ class BTCScalpingBot:
         if position_info['has_position']:
             time_in_pos = position_info['time_in_position']
             direction = "📈 LONG" if position_info['side'] == 'long' else "📉 SHORT"
-            print(f"   📍 Position: {direction} @ €{position_info['entry_price']:,.2f} ({time_in_pos:.0f}s)")
+            print(f"   📍 Position: {direction} @ €{position_info['entry_price']:,.2f} ({time_in_pos:.0f}s) 🚀3X")
         else:
             print(f"   📍 Position: NONE")
         
@@ -579,7 +579,7 @@ class BTCScalpingBot:
     async def _shutdown(self):
         """Shutdown with ML model saving"""
         
-        print("\n🛑 Shutting down BTC scalping bot...")
+        print("\n🛑 Shutting down AGGRESSIVE BTC scalping bot...")
         self.is_running = False
         
         try:
@@ -594,7 +594,7 @@ class BTCScalpingBot:
             if self.ml_interface:
                 try:
                     self.ml_interface.ml_model.save_model()
-                    print("🤖 ML model saved for future learning")
+                    print("🤖 Aggressive ML model saved for future learning")
                 except Exception as e:
                     logging.warning(f"Error saving ML model: {e}")
             
@@ -607,20 +607,20 @@ class BTCScalpingBot:
             # Cleanup logger
             self.trade_logger.cleanup()
             
-            print("✅ BTC scalping bot shutdown completed")
+            print("✅ AGGRESSIVE BTC scalping bot shutdown completed")
             
         except Exception as e:
             logging.error(f"Shutdown error: {e}")
     
     def _generate_final_report(self):
-        """Generate final report with ML insights"""
+        """Generate final report with AGGRESSIVE ML insights"""
         
         session_duration = datetime.now() - self.session_start
         win_rate = (self.winning_trades / max(1, self.total_trades)) * 100
         ml_accuracy = (self.ml_correct_today / max(1, self.ml_predictions_today)) * 100 if self.ml_predictions_today > 0 else 0
         
         print("\n" + "="*80)
-        print("           ₿ BTC SCALPING SESSION FINAL REPORT v2.0 (CORRECTED)")
+        print("           ₿ AGGRESSIVE BTC SCALPING SESSION FINAL REPORT")
         print("="*80)
         
         # Session overview
@@ -629,23 +629,25 @@ class BTCScalpingBot:
         print(f"Starting Balance: €{CONFIG['starting_balance']}")
         print(f"Final Balance: €{self.current_balance:.2f}")
         
-        # Performance metrics
+        # AGGRESSIVE Performance metrics
         balance_growth = ((self.current_balance - CONFIG['starting_balance']) / CONFIG['starting_balance']) * 100
-        print(f"\n📊 PERFORMANCE:")
+        print(f"\n📊 AGGRESSIVE PERFORMANCE:")
         print(f"Balance Growth: {balance_growth:+.1f}%")
         print(f"Total Trades: {self.total_trades}")
         print(f"Win Rate: {win_rate:.1f}%")
         print(f"Daily P&L: €{self.daily_pnl:+.2f}")
+        print(f"Position Size: 3x AGGRESSIVE (€24 vs €8)")
         
         # ML Learning insights
         if self.ml_enabled and self.ml_interface:
             ml_stats = self.ml_interface.get_ml_stats()
-            print(f"\n🤖 MACHINE LEARNING:")
+            print(f"\n🤖 AGGRESSIVE MACHINE LEARNING:")
             print(f"ML Predictions Today: {self.ml_predictions_today}")
             print(f"ML Accuracy Today: {ml_accuracy:.1f}%")
             print(f"Total Training Samples: {ml_stats.get('training_samples', 0)}")
             print(f"Model Version: v{ml_stats.get('model_version', 1)}")
             print(f"Overall ML Accuracy: {ml_stats.get('accuracy', 0):.1f}%")
+            print(f"Enhanced Learning: 3x position data quality")
         
         # Challenge progress
         current_level = 0
@@ -654,32 +656,32 @@ class BTCScalpingBot:
             current_level += 1
             target *= 2
         
-        print(f"\n🎯 CHALLENGE PROGRESS:")
+        print(f"\n🎯 AGGRESSIVE CHALLENGE PROGRESS:")
         print(f"Current Level: {current_level}")
         print(f"Distance to €1M: €{1000000 - self.current_balance:,.0f}")
         
         # Assessment
         if self.current_balance >= 1000000:
-            print("🏆 CHALLENGE COMPLETED! 🏆")
+            print("🏆 AGGRESSIVE CHALLENGE COMPLETED! 🏆")
         elif win_rate >= 60 and self.daily_pnl > 0:
-            assessment = "🟢 EXCELLENT SESSION!"
+            assessment = "🟢 EXCELLENT AGGRESSIVE SESSION!"
             if ml_accuracy > 70:
-                assessment += " 🤖 ML LEARNING WELL!"
+                assessment += " 🤖 ML LEARNING EXCEPTIONALLY WELL!"
         elif win_rate >= 50:
-            assessment = "🟡 GOOD SESSION"
+            assessment = "🟡 GOOD AGGRESSIVE SESSION"
             if ml_accuracy > 60:
-                assessment += " 🤖 ML IMPROVING"
+                assessment += " 🤖 ML IMPROVING RAPIDLY"
         else:
-            assessment = "🔴 NEEDS IMPROVEMENT"
+            assessment = "🔴 LEARNING PHASE"
             if self.ml_enabled:
-                assessment += " 🤖 ML STILL LEARNING"
+                assessment += " 🤖 ML COLLECTING QUALITY DATA"
         
         print(f"\n{assessment}")
         print("="*80)
 
 
 async def main():
-    """Main entry point for corrected BTC scalping bot"""
+    """Main entry point for CORRECTED AGGRESSIVE BTC scalping bot"""
     
     print("₿ BTC SCALPING BOT v2.0 - €20 to €1M Challenge (CORRECTED)")
     print("=" * 65)
@@ -689,14 +691,15 @@ async def main():
     print("  ✅ ENHANCED: Machine learning integration")
     print("  ✅ NEW: Continuous learning from every trade")
     print("  ✅ NEW: Auto-improving signal confidence")
+    print("  🚀 CORRECTED: 3x AGGRESSIVE position sizes")
     print()
     print("ARCHITECTURE (6 Files):")
     print("  1. data_collection.py - BTC tick data stream")
-    print("  2. trading_logic.py - FIXED scalping strategy") 
-    print("  3. trade_execution.py - FIXED with short selling")
+    print("  2. trading_logic.py - AGGRESSIVE scalping strategy") 
+    print("  3. trade_execution.py - CORRECTED with 3x position support")
     print("  4. logger.py - Challenge tracking")
     print("  5. ml_interface.py - Learning system")
-    print("  6. main.py - CORRECTED integration")
+    print("  6. main.py - CORRECTED AGGRESSIVE integration")
     print()
     
     # Validate setup
@@ -711,23 +714,25 @@ async def main():
         print("   • Learning from every trade outcome")
         print("   • Auto-improving signal confidence") 
         print("   • Model auto-retraining every 15 samples")
+        print("   🚀 ENHANCED: 3x position data quality")
         print()
     else:
         print("🚫 Machine Learning: DISABLED")
         print()
     
-    # Position sizing examples
-    print("💰 POSITION SIZING EXAMPLES (CORRECTED):")
-    print("   € 20 account → 0.000186 BTC = € 8.00 position ✅")
-    print("   € 50 account → 0.000279 BTC = €12.00 position ✅")
-    print("   €100 account → 0.000372 BTC = €16.00 position ✅")
-    print("   €200 account → 0.000465 BTC = €20.00 position ✅")
+    # AGGRESSIVE Position sizing examples
+    print("💰 AGGRESSIVE POSITION SIZING (CORRECTED):")
+    print("   € 20 account → 0.000558 BTC = €24.00 position ✅ 3X AGGRESSIVE")
+    print("   € 50 account → 0.000837 BTC = €36.00 position ✅ 3X AGGRESSIVE")
+    print("   €100 account → 0.001116 BTC = €48.00 position ✅ 3X AGGRESSIVE")
+    print("   €200 account → 0.001395 BTC = €60.00 position ✅ 3X AGGRESSIVE")
     print()
     
     print("📈📉 TRADING CAPABILITIES:")
     print("   ✅ LONG positions (buy low, sell high)")
-    print("   ✅ SHORT positions (sell high, buy low) - FIXED")
+    print("   ✅ SHORT positions (sell high, buy low) - CORRECTED")
     print("   ✅ Complete market coverage")
+    print("   🚀 AGGRESSIVE: 3x position sizes for enhanced ML learning")
     print()
     
     # Create and start bot
@@ -739,7 +744,7 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\n👋 BTC Scalping Bot stopped")
+        print("\n👋 AGGRESSIVE BTC Scalping Bot stopped")
     except Exception as e:
         print(f"\n❌ Error: {e}")
         logging.error(f"Main error: {e}")

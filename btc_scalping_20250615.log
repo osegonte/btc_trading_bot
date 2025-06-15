@@ -1,0 +1,31 @@
+2025-06-15 06:59:36,077 - INFO - 🚀 BTC Scalping Bot v2.0 - CORRECTED AGGRESSIVE VERSION starting...
+2025-06-15 06:59:36,077 - INFO - ✅ BTC Data Collector initialized for BTCUSD
+2025-06-15 06:59:36,077 - INFO - ✅ BTC Scalping Logic initialized - AGGRESSIVE 3X MODE
+2025-06-15 06:59:36,077 - INFO -    🚀 AGGRESSIVE: 3x position sizes for enhanced ML learning
+2025-06-15 06:59:36,077 - INFO -    Target: €8.0 | Stop: €4.0
+2025-06-15 06:59:36,077 - INFO -    Starting balance: €20.0
+2025-06-15 06:59:36,077 - INFO -    Reset threshold: €5.0 (enhanced protection)
+2025-06-15 06:59:36,077 - INFO - 🎮 BTC Executor in enhanced simulation mode (long + short)
+2025-06-15 06:59:36,078 - INFO - Loaded 29 existing trades
+2025-06-15 06:59:36,078 - INFO - ✅ BTC Trade Logger initialized - Challenge tracking active
+2025-06-15 06:59:36,078 - INFO - ✅ BTC ML interface initialized
+2025-06-15 06:59:36,078 - INFO - 🤖 ML interface connected - bot will now learn from aggressive trades
+2025-06-15 06:59:36,078 - INFO - 🚀 Starting BTC tick data feed...
+2025-06-15 06:59:36,078 - INFO - 🎮 Starting BTC simulation for scalping...
+2025-06-15 06:59:36,078 - INFO - 🎮 BTC scalping simulation started at $43,000.00
+2025-06-15 06:59:38,114 - INFO - ✅ AGGRESSIVE LONG ENTRY: BUY 0.000558 BTC @ $43,027.51 ($+1.44)
+2025-06-15 06:59:38,115 - INFO - ✅ AGGRESSIVE Position opened: LONG 0.000558 BTC @ €43027.51 (€24.01)
+2025-06-15 06:59:38,116 - INFO - ₿ TRADE [ENTRY]: BUY 0.000558 BTC @ €43,027.51 (€24.01)
+2025-06-15 06:59:58,060 - INFO - ✅ AGGRESSIVE SHORT ENTRY: SELL 0.000558 BTC @ $42,760.63 ($-1.69)
+2025-06-15 06:59:58,060 - INFO - Position closed: LONG 0.000558 BTC @ $42,760.63
+2025-06-15 06:59:58,061 - INFO - 💰 AGGRESSIVE Position closed: -0.15€ | Balance: €19.85 | ML: 1 learned
+2025-06-15 06:59:58,061 - INFO - ₿ TRADE [EXIT]: SELL 0.000558 BTC @ €42,760.63 (€23.86) | P&L: €-0.17
+2025-06-15 06:59:58,062 - INFO - 💰 Balance: €19.83 | Level: 0 | Target: €20
+2025-06-15 07:00:00,317 - INFO - ✅ AGGRESSIVE SHORT ENTRY: SELL 0.000558 BTC @ $42,718.07 ($-1.70)
+2025-06-15 07:00:00,317 - INFO - ✅ AGGRESSIVE Position opened: SHORT 0.000558 BTC @ €42718.07 (€23.84)
+2025-06-15 07:00:00,318 - INFO - ₿ TRADE [ENTRY]: SELL 0.000558 BTC @ €42,718.07 (€23.84)
+2025-06-15 07:00:20,229 - INFO - ✅ AGGRESSIVE LONG ENTRY: BUY 0.000558 BTC @ $42,959.30 ($+1.77)
+2025-06-15 07:00:20,229 - INFO - Position closed: SHORT 0.000558 BTC @ $42,959.30
+2025-06-15 07:00:20,229 - INFO - 💰 AGGRESSIVE Position closed: -0.13€ | Balance: €19.69 | ML: 2 learned
+2025-06-15 07:00:20,230 - INFO - ₿ TRADE [EXIT]: BUY 0.000558 BTC @ €42,959.30 (€23.97) | P&L: €-0.16
+2025-06-15 07:00:20,230 - INFO - 💰 Balance: €19.67 | Level: 0 | Target: €20
