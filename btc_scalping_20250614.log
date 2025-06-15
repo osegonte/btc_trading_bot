@@ -179,3 +179,11 @@
 2025-06-14 22:04:42,040 - INFO - ✅ Simulated SHORT ENTRY: SELL 0.000186 BTC @ $42,554.22 ($-2.16)
 2025-06-14 22:04:42,041 - INFO - ✅ Position opened: SHORT 0.000186 BTC @ €42554.22 (€7.92)
 2025-06-14 22:04:42,042 - INFO - ₿ TRADE [ENTRY]: SELL 0.000186 BTC @ €42,554.22 (€7.92)
+2025-06-14 22:05:02,046 - INFO - ✅ Simulated LONG ENTRY: BUY 0.000186 BTC @ $42,447.70 ($+1.12)
+2025-06-14 22:05:02,047 - INFO - Position closed: SHORT 0.000186 BTC @ $42,447.70
+2025-06-14 22:05:02,047 - INFO - 💰 Position closed: +0.02€ | Balance: €20.01 | ML: 20 learned
+2025-06-14 22:05:02,048 - INFO - ₿ TRADE [EXIT]: BUY 0.000186 BTC @ €42,447.70 (€7.90) | P&L: €+0.01
+2025-06-14 22:05:02,048 - INFO - 💰 Balance: €20.00 | Level: 1 | Target: €40
+2025-06-14 22:05:05,245 - INFO - ✅ Simulated LONG ENTRY: BUY 0.000186 BTC @ $42,488.55 ($+1.43)
+2025-06-14 22:05:05,245 - INFO - ✅ Position opened: LONG 0.000186 BTC @ €42488.55 (€7.90)
+2025-06-14 22:05:05,246 - INFO - ₿ TRADE [ENTRY]: BUY 0.000186 BTC @ €42,488.55 (€7.90)
